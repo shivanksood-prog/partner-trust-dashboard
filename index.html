@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Partner Trust Line — Agent Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #f4f6f9;
+      --card:     #ffffff;
+      --border:   #e2e8f0;
+      --text:     #1e293b;
+      --muted:    #64748b;
+      --accent:   #3b82f6;
+      --green:    #22c55e;
+      --red:      #ef4444;
+      --yellow:   #f59e0b;
+
+      --grade-a-bg: #d1fae5; --grade-a-fg: #065f46;
+      --grade-b-bg: #dbeafe; --grade-b-fg: #1e40af;
+      --grade-c-bg: #fef9c3; --grade-c-fg: #78350f;
+      --grade-d-bg: #ffedd5; --grade-d-fg: #9a3412;
+      --grade-e-bg: #fee2e2; --grade-e-fg: #991b1b;
+      --grade-n-bg: #f1f5f9; --grade-n-fg: #475569;
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+           background: var(--bg); color: var(--text); font-size: 14px; }
+
+    /* ── Header ── */
+    .header {
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: .3px; }
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .sync-info { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 0 rgba(34,197,94,.4);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
+      70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    .btn {
+      padding: 6px 14px; border-radius: 6px; border: none;
+      cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost   { background: rgba(255,255,255,.12); color: #f8fafc; }
+
+    /* ── Layout ── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+
+    /* ── Summary Cards ── */
+    .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+    @media (max-width: 900px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+    .card {
+      background: var(--card); border-radius: 10px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+                  color: var(--muted); margin-bottom: 6px; }
+    .card-value { font-size: 28px; font-weight: 700; color: var(--text); }
+    .card-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    /* ── Section ── */
+    .section {
+      background: var(--card); border-radius: 10px;
+      border: 1px solid var(--border); margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.05);
+    }
+    .section-header {
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .section-title { font-size: 15px; font-weight: 600; }
+
+    /* ── Filters ── */
+    .filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .filter-select {
+      padding: 5px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: #f8fafc;
+      font-size: 13px; color: var(--text); cursor: pointer;
+    }
+
+    /* ── Table ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 10px 14px; text-align: left;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .6px; color: var(--muted);
+      background: #f8fafc; border-bottom: 1px solid var(--border);
+      white-space: nowrap; cursor: pointer; user-select: none;
+    }
+    thead th:hover { color: var(--accent); }
+    thead th.sorted { color: var(--accent); }
+    thead th.sorted::after { content: " ↓"; }
+    thead th.sorted.asc::after { content: " ↑"; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #f8fafc; }
+    tbody td { padding: 11px 14px; vertical-align: middle; white-space: nowrap; }
+
+    /* ── Grade Badge ── */
+    .grade {
+      display: inline-block; width: 26px; height: 26px;
+      border-radius: 50%; text-align: center; line-height: 26px;
+      font-size: 12px; font-weight: 700;
+    }
+    .grade-A { background: var(--grade-a-bg); color: var(--grade-a-fg); }
+    .grade-B { background: var(--grade-b-bg); color: var(--grade-b-fg); }
+    .grade-C { background: var(--grade-c-bg); color: var(--grade-c-fg); }
+    .grade-D { background: var(--grade-d-bg); color: var(--grade-d-fg); }
+    .grade-E { background: var(--grade-e-bg); color: var(--grade-e-fg); }
+    .grade-NA{ background: var(--grade-n-bg); color: var(--grade-n-fg); }
+
+    /* ── Progress Bar ── */
+    .pbar-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+    .pbar { flex: 1; height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
+    .pbar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+    .pbar-fill.green  { background: var(--green); }
+    .pbar-fill.yellow { background: var(--yellow); }
+    .pbar-fill.red    { background: var(--red); }
+    .pbar-label { font-size: 12px; color: var(--muted); min-width: 36px; text-align: right; }
+
+    /* ── Expandable row ── */
+    .expand-btn { background: none; border: none; cursor: pointer; color: var(--accent);
+                  font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+    .expand-btn:hover { background: #eff6ff; }
+    .daily-row { display: none; background: #f8fafc; }
+    .daily-row.open { display: table-row; }
+    .daily-inner { padding: 8px 14px 8px 40px; }
+    .daily-table { width: 100%; border-collapse: collapse; }
+    .daily-table td { padding: 5px 10px; font-size: 12px; color: var(--muted);
+                       border-bottom: 1px solid #e9ecef; }
+    .daily-table tr:last-child td { border: none; }
+
+    /* ── Open Tickets ── */
+    .open-badge {
+      display: inline-block; background: #fef3c7; color: #92400e;
+      border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600;
+    }
+    .age-warn { color: var(--red); font-weight: 600; }
+
+    /* ── Loading / Error ── */
+    .state-msg {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted); font-size: 15px;
+    }
+    .spinner {
+      width: 32px; height: 32px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; margin: 0 auto 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Tab bar for day-wise ── */
+    .agent-name-cell { font-weight: 600; }
+    .no-data { text-align: center; padding: 30px; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header class="header">
+  <div>
+    <h1>Partner Trust Line &mdash; Agent Dashboard</h1>
+  </div>
+  <div class="header-right">
+    <div class="sync-info">
+      <span class="live-dot"></span>
+      <span id="lastUpdated">Loading…</span>
+    </div>
+    <button class="btn btn-ghost" onclick="loadData(true)">↻ Refresh</button>
+  </div>
+</header>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<div class="container">
+
+  <!-- Summary Cards -->
+  <div class="cards" id="cards">
+    <div class="card"><div class="card-label">Total Tickets</div><div class="card-value" id="s-total">—</div></div>
+    <div class="card"><div class="card-label">Open</div><div class="card-value" id="s-open" style="color:var(--yellow)">—</div></div>
+    <div class="card"><div class="card-label">Closed</div><div class="card-value" id="s-closed" style="color:var(--green)">—</div></div>
+    <div class="card"><div class="card-label">Resolution %</div><div class="card-value" id="s-res">—</div><div class="card-sub">closed / total</div></div>
+    <div class="card"><div class="card-label">Avg Resolution TAT</div><div class="card-value" id="s-tat">—</div><div class="card-sub">closed tickets</div></div>
+  </div>
+
+  <!-- Agent Performance Table -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Agent Performance</span>
+      <div class="filters">
+        <label style="font-size:12px;color:var(--muted)">Date:</label>
+        <select class="filter-select" id="dateFilter" onchange="applyFilters()">
+          <option value="all">All Time</option>
+          <option value="today" selected>Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7d">Last 7 Days</option>
+          <option value="30d">Last 30 Days</option>
+        </select>
+        <label style="font-size:12px;color:var(--muted)">Sort:</label>
+        <select class="filter-select" id="sortBy" onchange="applyFilters()">
+          <option value="total">Total Tickets</option>
+          <option value="res_pct">Resolution %</option>
+          <option value="psat_pct">PSAT %</option>
+          <option value="avg_tat_mins">Avg TAT</option>
+          <option value="grade">Grade</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="agentTable">
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Total</th>
+            <th>Open</th>
+            <th>Closed</th>
+            <th>Resolution</th>
+            <th>Avg TAT</th>
+            <th>PSAT %</th>
+            <th>Grade</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="agentBody">
+          <tr><td colspan="9"><div class="state-msg"><div class="spinner"></div>Loading…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Open Tickets -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title">Open Tickets <span id="openCount" class="open-badge">0</span></span>
+      <span style="font-size:12px;color:var(--muted)">Re-synced every 15 min · Sorted by age (oldest first)</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Ticket ID</th>
+            <th>Agent</th>
+            <th>Title</th>
+            <th>Created</th>
+            <th>Age</th>
+          </tr>
+        </thead>
+        <tbody id="openBody">
+          <tr><td colspan="5"><div class="state-msg"><div class="spinner"></div>Loading…</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let DATA = null;
+const DATA_URL = "./data/data.json";
+
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function today()     { return new Date().toISOString().slice(0,10); }
+function yesterday() {
+  const d = new Date(); d.setDate(d.getDate()-1);
+  return d.toISOString().slice(0,10);
+}
+function daysAgo(n) {
+  const d = new Date(); d.setDate(d.getDate()-n);
+  return d.toISOString().slice(0,10);
+}
+
+function inDateRange(dateStr, filter) {
+  if (filter === "all") return true;
+  if (!dateStr)         return false;
+  if (filter === "today")     return dateStr === today();
+  if (filter === "yesterday") return dateStr === yesterday();
+  if (filter === "7d")        return dateStr >= daysAgo(7);
+  if (filter === "30d")       return dateStr >= daysAgo(30);
+  return true;
+}
+
+// ── Fetch data ────────────────────────────────────────────────────────────────
+async function loadData(force = false) {
+  document.getElementById("lastUpdated").textContent = "Refreshing…";
+  try {
+    const url = DATA_URL + "?t=" + Date.now();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    DATA = await resp.json();
+    document.getElementById("lastUpdated").textContent =
+      "Last synced: " + DATA.last_updated;
+    applyFilters();
+  } catch (e) {
+    document.getElementById("lastUpdated").textContent = "Error loading data";
+    console.error(e);
+  }
+}
+
+// ── Filter & reaggregate ──────────────────────────────────────────────────────
+function applyFilters() {
+  if (!DATA) return;
+
+  const dateFilter = document.getElementById("dateFilter").value;
+  const sortBy     = document.getElementById("sortBy").value;
+
+  // Re-filter agents' daily data
+  const filtered = DATA.agents.map(ag => {
+    if (dateFilter === "all") return ag;  // use pre-aggregated totals
+
+    // Rebuild from daily breakdown
+    let total=0, open=0, closed=0, tatSum=0, tatN=0;
+    (ag.daily || []).forEach(d => {
+      if (!inDateRange(d.date, dateFilter)) return;
+      total  += d.total;
+      closed += d.closed;
+      open   += (d.total - d.closed);
+      // tat is stored as string in daily — we don't have mins in daily for now
+    });
+    if (total === 0) return null;
+
+    return {
+      ...ag,
+      total, open, closed,
+      res_pct: total ? +(closed/total*100).toFixed(1) : 0,
+      // keep psat from all-time (PSAT sheet doesn't have date filter)
+    };
+  }).filter(Boolean);
+
+  // Sort
+  const gradeOrder = { A:0, B:1, C:2, D:3, E:4, "N/A":5 };
+  filtered.sort((a, b) => {
+    if (sortBy === "grade")        return (gradeOrder[a.grade]||5) - (gradeOrder[b.grade]||5);
+    if (sortBy === "psat_pct")     return (b.psat_pct ?? -1) - (a.psat_pct ?? -1);
+    if (sortBy === "res_pct")      return b.res_pct - a.res_pct;
+    if (sortBy === "avg_tat_mins") return a.avg_tat_mins - b.avg_tat_mins;  // lower is better
+    return b.total - a.total;
+  });
+
+  // Summary (use filtered totals)
+  let sumTotal=0, sumOpen=0, sumClosed=0;
+  filtered.forEach(a => { sumTotal+=a.total; sumOpen+=a.open; sumClosed+=a.closed; });
+
+  if (dateFilter === "all") {
+    renderSummary(DATA.summary);
+  } else {
+    renderSummary({
+      total:   sumTotal,
+      open:    sumOpen,
+      closed:  sumClosed,
+      res_pct: sumTotal ? +(sumClosed/sumTotal*100).toFixed(1) : 0,
+      avg_tat: DATA.summary.avg_tat,   // keep global avg TAT
+    });
+  }
+
+  renderAgents(filtered);
+  renderOpenTickets(DATA.open_tickets || []);
+}
+
+// ── Render summary ────────────────────────────────────────────────────────────
+function renderSummary(s) {
+  document.getElementById("s-total").textContent = s.total.toLocaleString();
+  document.getElementById("s-open").textContent  = s.open.toLocaleString();
+  document.getElementById("s-closed").textContent= s.closed.toLocaleString();
+  document.getElementById("s-res").textContent   = s.res_pct + "%";
+  document.getElementById("s-tat").textContent   = s.avg_tat || "—";
+}
+
+// ── Render agent table ────────────────────────────────────────────────────────
+function pbarHtml(pct, label) {
+  const cls = pct >= 80 ? "green" : pct >= 60 ? "yellow" : "red";
+  return `<div class="pbar-wrap">
+    <div class="pbar"><div class="pbar-fill ${cls}" style="width:${pct}%"></div></div>
+    <span class="pbar-label">${label}</span>
+  </div>`;
+}
+
+function gradeHtml(g) {
+  const cls = g === "N/A" ? "grade-NA" : "grade-" + g;
+  return `<span class="grade ${cls}">${g === "N/A" ? "—" : g}</span>`;
+}
+
+function renderAgents(agents) {
+  const tbody = document.getElementById("agentBody");
+  if (!agents.length) {
+    tbody.innerHTML = `<tr><td colspan="9"><div class="no-data">No data for this filter</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = agents.map((ag, i) => {
+    const psatLabel = ag.psat_pct !== null ? ag.psat_pct + "%" : "—";
+    const psatBar   = ag.psat_pct !== null
+      ? pbarHtml(ag.psat_pct, psatLabel)
+      : `<span style="color:var(--muted)">No calls</span>`;
+
+    const dailyRows = (ag.daily || []).map(d =>
+      `<tr>
+        <td>${d.date}</td>
+        <td>${d.total}</td>
+        <td>${d.closed}</td>
+        <td>${d.total - d.closed}</td>
+        <td>${d.res_pct}%</td>
+        <td>${d.avg_tat}</td>
+      </tr>`
+    ).join("");
+
+    const hasDailyData = (ag.daily || []).length > 0;
+
+    return `
+    <tr id="ag-row-${i}">
+      <td class="agent-name-cell">${esc(ag.name)}</td>
+      <td><strong>${ag.total}</strong></td>
+      <td style="color:var(--yellow)">${ag.open}</td>
+      <td style="color:var(--green)">${ag.closed}</td>
+      <td>${pbarHtml(ag.res_pct, ag.res_pct + "%")}</td>
+      <td>${ag.avg_tat || "—"}</td>
+      <td>${psatBar}</td>
+      <td>${gradeHtml(ag.grade)}</td>
+      <td>${hasDailyData
+        ? `<button class="expand-btn" onclick="toggleDaily(${i})">Day-wise ▾</button>`
+        : ""}</td>
+    </tr>
+    <tr class="daily-row" id="ag-daily-${i}">
+      <td colspan="9">
+        <div class="daily-inner">
+          <table class="daily-table">
+            <thead>
+              <tr style="color:var(--muted);font-weight:600">
+                <td>Date</td><td>Total</td><td>Closed</td><td>Open</td><td>Res%</td><td>Avg TAT</td>
+              </tr>
+            </thead>
+            <tbody>${dailyRows}</tbody>
+          </table>
+        </div>
+      </td>
+    </tr>`;
+  }).join("");
+}
+
+function toggleDaily(i) {
+  const row = document.getElementById("ag-daily-" + i);
+  const btn = document.querySelector(`#ag-row-${i} .expand-btn`);
+  if (row.classList.toggle("open")) {
+    btn.textContent = "Day-wise ▴";
+  } else {
+    btn.textContent = "Day-wise ▾";
+  }
+}
+
+// ── Render open tickets ───────────────────────────────────────────────────────
+function renderOpenTickets(tickets) {
+  const badge = document.getElementById("openCount");
+  const tbody = document.getElementById("openBody");
+  badge.textContent = tickets.length;
+
+  if (!tickets.length) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="no-data">No open tickets 🎉</div></td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = tickets.map(t => {
+    const ageClass = t.age_mins > 240 ? "age-warn" : "";
+    return `<tr>
+      <td><code style="font-size:12px">${esc(t.id)}</code></td>
+      <td>${esc(t.agent)}</td>
+      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(t.title || "—")}</td>
+      <td>${esc(t.created)}</td>
+      <td class="${ageClass}">${esc(t.age)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function esc(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Auto-refresh every 15 min ─────────────────────────────────────────────────
+loadData();
+setInterval(() => loadData(), 15 * 60 * 1000);
+</script>
+</body>
+</html>

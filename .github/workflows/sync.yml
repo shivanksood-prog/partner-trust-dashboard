@@ -1,0 +1,42 @@
+name: Sync Kapture Data
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes
+  workflow_dispatch:           # allow manual trigger from GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run sync script
+        env:
+          KAPTURE_AUTH: ${{ secrets.KAPTURE_AUTH }}
+        run: python scripts/sync_data.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/data.json data/state.json
+          git diff --staged --quiet && echo "No changes" || (
+            git commit -m "sync: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            git push
+          )
