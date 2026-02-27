@@ -173,7 +173,27 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Tab bar for day-wise ── */
+    /* ── Grade sections ── */
+    .grade-section { margin-bottom: 16px; border-radius: 10px; overflow: hidden;
+                     border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+    .grade-section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 18px; cursor: pointer; user-select: none;
+      border-bottom: 1px solid var(--border);
+    }
+    .grade-section-header:hover { opacity: .9; }
+    .grade-section-header .left { display: flex; align-items: center; gap: 12px; }
+    .grade-label-big {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 800;
+    }
+    .grade-section-title { font-size: 15px; font-weight: 600; }
+    .grade-section-meta  { font-size: 12px; color: var(--muted); }
+    .grade-section-body  { background: var(--card); }
+    .grade-section-body.collapsed { display: none; }
+    .toggle-arrow { font-size: 12px; color: var(--muted); transition: transform .2s; }
+    .toggle-arrow.open { transform: rotate(180deg); }
     .agent-name-cell { font-weight: 600; }
     .no-data { text-align: center; padding: 30px; color: var(--muted); }
   </style>
@@ -206,9 +226,9 @@
     <div class="card"><div class="card-label">Avg Resolution TAT</div><div class="card-value" id="s-tat">—</div><div class="card-sub">closed tickets</div></div>
   </div>
 
-  <!-- Agent Performance Table -->
-  <div class="section">
-    <div class="section-header">
+  <!-- Filters bar -->
+  <div class="section" style="margin-bottom:16px">
+    <div class="section-header" style="border:none;padding:12px 18px">
       <span class="section-title">Agent Performance</span>
       <div class="filters">
         <label style="font-size:12px;color:var(--muted)">Date:</label>
@@ -219,36 +239,20 @@
           <option value="7d" selected>Last 7 Days</option>
           <option value="30d">Last 30 Days</option>
         </select>
-        <label style="font-size:12px;color:var(--muted)">Sort:</label>
+        <label style="font-size:12px;color:var(--muted)">Sort within grade:</label>
         <select class="filter-select" id="sortBy" onchange="applyFilters()">
           <option value="total">Total Tickets</option>
           <option value="res_pct">Resolution %</option>
           <option value="psat_pct">PSAT %</option>
           <option value="avg_tat_mins">Avg TAT</option>
-          <option value="grade">Grade</option>
         </select>
       </div>
     </div>
-    <div class="table-wrap">
-      <table id="agentTable">
-        <thead>
-          <tr>
-            <th>Agent</th>
-            <th>Total</th>
-            <th>Open</th>
-            <th>Closed</th>
-            <th>Resolution</th>
-            <th>Avg TAT</th>
-            <th>PSAT %</th>
-            <th>Grade</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="agentBody">
-          <tr><td colspan="9"><div class="state-msg"><div class="spinner"></div>Loading…</div></td></tr>
-        </tbody>
-      </table>
-    </div>
+  </div>
+
+  <!-- Grade sections rendered here -->
+  <div id="gradeSections">
+    <div class="state-msg"><div class="spinner"></div>Loading…</div>
   </div>
 
   <!-- Open Tickets -->
@@ -389,7 +393,17 @@ function renderSummary(s) {
   document.getElementById("s-tat").textContent   = s.avg_tat || "—";
 }
 
-// ── Render agent table ────────────────────────────────────────────────────────
+// ── Grade config ──────────────────────────────────────────────────────────────
+const GRADES = [
+  { key: "A",   label: "Grade A",   range: "90%+",   bg: "var(--grade-a-bg)", fg: "var(--grade-a-fg)" },
+  { key: "B",   label: "Grade B",   range: "80–89%", bg: "var(--grade-b-bg)", fg: "var(--grade-b-fg)" },
+  { key: "C",   label: "Grade C",   range: "70–79%", bg: "var(--grade-c-bg)", fg: "var(--grade-c-fg)" },
+  { key: "D",   label: "Grade D",   range: "60–69%", bg: "var(--grade-d-bg)", fg: "var(--grade-d-fg)" },
+  { key: "E",   label: "Grade E",   range: "<60%",   bg: "var(--grade-e-bg)", fg: "var(--grade-e-fg)" },
+  { key: "N/A", label: "No PSAT",   range: "No calls yet", bg: "var(--grade-n-bg)", fg: "var(--grade-n-fg)" },
+];
+
+// ── Render helpers ────────────────────────────────────────────────────────────
 function pbarHtml(pct, label) {
   const cls = pct >= 80 ? "green" : pct >= 60 ? "yellow" : "red";
   return `<div class="pbar-wrap">
@@ -398,39 +412,23 @@ function pbarHtml(pct, label) {
   </div>`;
 }
 
-function gradeHtml(g) {
-  const cls = g === "N/A" ? "grade-NA" : "grade-" + g;
-  return `<span class="grade ${cls}">${g === "N/A" ? "—" : g}</span>`;
-}
-
-function renderAgents(agents) {
-  const tbody = document.getElementById("agentBody");
-  if (!agents.length) {
-    tbody.innerHTML = `<tr><td colspan="9"><div class="no-data">No data for this filter</div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = agents.map((ag, i) => {
-    const psatLabel = ag.psat_pct !== null ? ag.psat_pct + "%" : "—";
-    const psatBar   = ag.psat_pct !== null
-      ? pbarHtml(ag.psat_pct, psatLabel)
+function agentRowsHtml(agents, idPrefix) {
+  return agents.map((ag, i) => {
+    const uid = idPrefix + "-" + i;
+    const psatBar = ag.psat_pct !== null
+      ? pbarHtml(ag.psat_pct, ag.psat_pct + "%")
       : `<span style="color:var(--muted)">No calls</span>`;
 
     const dailyRows = (ag.daily || []).map(d =>
       `<tr>
-        <td>${d.date}</td>
-        <td>${d.total}</td>
-        <td>${d.closed}</td>
-        <td>${d.total - d.closed}</td>
-        <td>${d.res_pct}%</td>
-        <td>${d.avg_tat}</td>
+        <td>${d.date}</td><td>${d.total}</td><td>${d.closed}</td>
+        <td>${d.total - d.closed}</td><td>${d.res_pct}%</td><td>${d.avg_tat}</td>
       </tr>`
     ).join("");
 
     const hasDailyData = (ag.daily || []).length > 0;
-
     return `
-    <tr id="ag-row-${i}">
+    <tr id="ag-row-${uid}">
       <td class="agent-name-cell">${esc(ag.name)}</td>
       <td><strong>${ag.total}</strong></td>
       <td style="color:var(--yellow)">${ag.open}</td>
@@ -438,20 +436,17 @@ function renderAgents(agents) {
       <td>${pbarHtml(ag.res_pct, ag.res_pct + "%")}</td>
       <td>${ag.avg_tat || "—"}</td>
       <td>${psatBar}</td>
-      <td>${gradeHtml(ag.grade)}</td>
       <td>${hasDailyData
-        ? `<button class="expand-btn" onclick="toggleDaily(${i})">Day-wise ▾</button>`
+        ? `<button class="expand-btn" onclick="toggleDaily('${uid}')">Day-wise ▾</button>`
         : ""}</td>
     </tr>
-    <tr class="daily-row" id="ag-daily-${i}">
-      <td colspan="9">
+    <tr class="daily-row" id="ag-daily-${uid}">
+      <td colspan="8">
         <div class="daily-inner">
           <table class="daily-table">
-            <thead>
-              <tr style="color:var(--muted);font-weight:600">
-                <td>Date</td><td>Total</td><td>Closed</td><td>Open</td><td>Res%</td><td>Avg TAT</td>
-              </tr>
-            </thead>
+            <thead><tr style="color:var(--muted);font-weight:600">
+              <td>Date</td><td>Total</td><td>Closed</td><td>Open</td><td>Res%</td><td>Avg TAT</td>
+            </tr></thead>
             <tbody>${dailyRows}</tbody>
           </table>
         </div>
@@ -460,9 +455,79 @@ function renderAgents(agents) {
   }).join("");
 }
 
-function toggleDaily(i) {
-  const row = document.getElementById("ag-daily-" + i);
-  const btn = document.querySelector(`#ag-row-${i} .expand-btn`);
+// ── Render grade sections ─────────────────────────────────────────────────────
+function renderAgents(agents) {
+  const container = document.getElementById("gradeSections");
+
+  if (!agents.length) {
+    container.innerHTML = `<div class="no-data">No data for this filter</div>`;
+    return;
+  }
+
+  // Group by grade
+  const byGrade = {};
+  GRADES.forEach(g => byGrade[g.key] = []);
+  agents.forEach(ag => {
+    const key = ag.grade in byGrade ? ag.grade : "N/A";
+    byGrade[key].push(ag);
+  });
+
+  container.innerHTML = GRADES.map(g => {
+    const list = byGrade[g.key];
+    if (!list.length) return "";
+
+    const agentCount  = list.length;
+    const totalTickets = list.reduce((s, a) => s + a.total, 0);
+    const avgPsat     = g.key !== "N/A"
+      ? (list.reduce((s, a) => s + (a.psat_pct ?? 0), 0) / agentCount).toFixed(1) + "%"
+      : "—";
+
+    return `
+    <div class="grade-section">
+      <div class="grade-section-header" style="background:${g.bg}"
+           onclick="toggleSection('${g.key}')">
+        <div class="left">
+          <div class="grade-label-big" style="background:${g.fg};color:#fff">${g.key === "N/A" ? "?" : g.key}</div>
+          <div>
+            <div class="grade-section-title" style="color:${g.fg}">${g.label}
+              <span style="font-weight:400;font-size:13px;color:${g.fg};opacity:.75"> · ${g.range}</span>
+            </div>
+            <div class="grade-section-meta">
+              ${agentCount} agent${agentCount > 1 ? "s" : ""} &nbsp;·&nbsp;
+              ${totalTickets} tickets &nbsp;·&nbsp;
+              Avg PSAT: ${avgPsat}
+            </div>
+          </div>
+        </div>
+        <span class="toggle-arrow open" id="arrow-${g.key}">▼</span>
+      </div>
+      <div class="grade-section-body" id="body-${g.key}">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Agent</th><th>Total</th><th>Open</th><th>Closed</th>
+                <th>Resolution</th><th>Avg TAT</th><th>PSAT %</th><th></th>
+              </tr>
+            </thead>
+            <tbody>${agentRowsHtml(list, g.key)}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function toggleSection(gradeKey) {
+  const body  = document.getElementById("body-" + gradeKey);
+  const arrow = document.getElementById("arrow-" + gradeKey);
+  const collapsed = body.classList.toggle("collapsed");
+  arrow.classList.toggle("open", !collapsed);
+}
+
+function toggleDaily(uid) {
+  const row = document.getElementById("ag-daily-" + uid);
+  const btn = document.querySelector(`#ag-row-${uid} .expand-btn`);
   if (row.classList.toggle("open")) {
     btn.textContent = "Day-wise ▴";
   } else {
