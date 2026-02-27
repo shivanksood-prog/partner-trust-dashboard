@@ -168,10 +168,10 @@ def load_psat() -> dict[str, int]:
     rows = fetch_csv(PSAT_SHEET)
     out = {}
     for row in rows:
-        if row.get("Connected", "").strip() != "Connected":
+        # Connected column stores "1"/"0"; Calling Status stores "Connected"/DNP text
+        if row.get("Connected", "").strip() != "1":
             continue
-        # prefer ptl_ticket_id; fall back to ticket_id
-        tid = row.get("ptl_ticket_id", "").strip() or row.get("ticket_id", "").strip()
+        tid = row.get("ticket_id", "").strip() or row.get("ptl_ticket_id", "").strip()
         if not tid:
             continue
         try:
