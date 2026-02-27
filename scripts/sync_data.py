@@ -181,6 +181,29 @@ def extract_ticket(api_obj: dict) -> dict | None:
 
 # ── PSAT ──────────────────────────────────────────────────────────────────────
 
+def normalize_date(s: str) -> str:
+    """Normalize various date formats to YYYY-MM-DD."""
+    s = s.strip()
+    if not s:
+        return ""
+    # Already ISO: 2026-02-17 or 2026-02-17 12:00:00
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        return s[:10]
+    # US format: M/D/YYYY or MM/DD/YYYY
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(s.split()[0], fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    # DD-MM-YYYY
+    for fmt in ("%d-%m-%Y", "%d-%m-%y"):
+        try:
+            return datetime.strptime(s.split()[0], fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return s[:10]
+
+
 def load_psat() -> dict[str, dict]:
     """Returns {ticket_id: {psat, calling_status, call_dt}} for ALL called rows."""
     rows = fetch_csv(PSAT_SHEET)
@@ -199,8 +222,8 @@ def load_psat() -> dict[str, dict]:
                 psat = int(row.get("PSAT", "0").strip())
             except ValueError:
                 psat = 0
-        # call_dt is the date the PSAT call was made (YYYY-MM-DD)
-        call_dt = row.get("call_dt", "").strip()[:10]   # "2026-02-17"
+        # call_dt is the date the PSAT call was made — normalize to YYYY-MM-DD
+        call_dt = normalize_date(row.get("call_dt", ""))
         out[tid] = {"psat": psat, "calling_status": calling_status, "call_dt": call_dt}
     return out
 
