@@ -176,12 +176,13 @@ def extract_ticket(api_obj: dict) -> dict | None:
         "url":            td.get("url", ""),
         "psat":           None,    # filled later
         "calling_status": None,    # filled later
+        "call_dt":        None,    # filled later
     }
 
 # ── PSAT ──────────────────────────────────────────────────────────────────────
 
 def load_psat() -> dict[str, dict]:
-    """Returns {ticket_id: {psat, calling_status}} for ALL called rows."""
+    """Returns {ticket_id: {psat, calling_status, call_dt}} for ALL called rows."""
     rows = fetch_csv(PSAT_SHEET)
     out = {}
     for row in rows:
@@ -198,7 +199,9 @@ def load_psat() -> dict[str, dict]:
                 psat = int(row.get("PSAT", "0").strip())
             except ValueError:
                 psat = 0
-        out[tid] = {"psat": psat, "calling_status": calling_status}
+        # call_dt is the date the PSAT call was made (YYYY-MM-DD)
+        call_dt = row.get("call_dt", "").strip()[:10]   # "2026-02-17"
+        out[tid] = {"psat": psat, "calling_status": calling_status, "call_dt": call_dt}
     return out
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
@@ -250,6 +253,7 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
         a["ticket_list"].append({
             "id":             tid,
             "date":           d,
+            "call_dt":        t.get("call_dt", ""),
             "bucket":         t.get("bucket", ""),
             "question":       t.get("question", ""),
             "psat":           t.get("psat"),
@@ -366,7 +370,8 @@ def main():
     # Decide what to fetch: new + still-open + any missing new fields (one-time backfill)
     new_ids      = all_ids - set(tickets.keys())
     open_ids     = {tid for tid, t in tickets.items() if not t.get("is_closed")}
-    backfill_ids = {tid for tid, t in tickets.items() if "url" not in t}  # missing new fields
+    backfill_ids = {tid for tid, t in tickets.items()
+                    if "url" not in t or "calling_status" not in t}  # missing new fields
     to_fetch     = list(new_ids | open_ids | backfill_ids)
     print(f"To fetch: {len(to_fetch)} ({len(new_ids)} new, {len(open_ids)} open, {len(backfill_ids)} backfill)")
 
@@ -391,6 +396,7 @@ def main():
         if tid in psat_map:
             tickets[tid]["psat"]           = psat_map[tid]["psat"]
             tickets[tid]["calling_status"] = psat_map[tid]["calling_status"]
+            tickets[tid]["call_dt"]        = psat_map[tid]["call_dt"]
     print(f"PSAT matched {len(psat_map)} tickets")
 
     # Aggregate

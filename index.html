@@ -68,7 +68,7 @@
 
     /* ── Summary Cards ── */
     .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
-    @media (max-width: 900px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, 1fr); } }
     .card {
       background: var(--card); border-radius: 10px;
       padding: 16px 18px;
@@ -256,10 +256,10 @@
   <!-- Summary Cards -->
   <div class="cards" id="cards">
     <div class="card"><div class="card-label">Total Tickets</div><div class="card-value" id="s-total">—</div></div>
-    <div class="card"><div class="card-label">Open</div><div class="card-value" id="s-open" style="color:var(--yellow)">—</div></div>
-    <div class="card"><div class="card-label">Closed</div><div class="card-value" id="s-closed" style="color:var(--green)">—</div></div>
-    <div class="card"><div class="card-label">Resolution %</div><div class="card-value" id="s-res">—</div><div class="card-sub">closed / total</div></div>
-    <div class="card"><div class="card-label">Avg Resolution TAT</div><div class="card-value" id="s-tat">—</div><div class="card-sub">closed tickets</div></div>
+    <div class="card"><div class="card-label">Resolution %</div><div class="card-value" id="s-res">—</div><div class="card-sub" id="s-res-sub">closed / total</div></div>
+    <div class="card"><div class="card-label">Median Resolution TAT</div><div class="card-value" id="s-tat">—</div><div class="card-sub">closed tickets</div></div>
+    <div class="card"><div class="card-label">PSAT %</div><div class="card-value" id="s-psat" style="color:var(--green)">—</div><div class="card-sub" id="s-psat-sub">satisfied / connected calls</div></div>
+    <div class="card"><div class="card-label">PSAT Calls</div><div class="card-value" id="s-psat-n" style="color:var(--accent)">—</div><div class="card-sub">connected calls</div></div>
   </div>
 
   <!-- Filters bar -->
@@ -413,9 +413,13 @@ function applyFilters() {
     const closed = ft.filter(t => t.closed).length;
     const open   = total - closed;
 
-    // Recompute PSAT from filtered tickets only
-    const psatTickets = ft.filter(t => t.psat !== null && t.psat !== undefined);
-    const psatPct  = psatTickets.length
+    // PSAT filtered by call_dt (date the PSAT call was made), not ticket creation date
+    const psatTickets = (ag.tickets || []).filter(t =>
+      (t.calling_status === "Connected" || (t.psat !== null && t.psat !== undefined)) &&
+      t.psat !== null && t.psat !== undefined &&
+      inDateRange(t.call_dt || t.date, dateFilter)
+    );
+    const psatPct = psatTickets.length
       ? +(psatTickets.reduce((s,t) => s + t.psat, 0) / psatTickets.length * 100).toFixed(1)
       : null;
     const psatN = psatTickets.length;
@@ -439,33 +443,82 @@ function applyFilters() {
     return b.total - a.total;
   });
 
-  // Summary (use filtered totals)
-  let sumTotal=0, sumOpen=0, sumClosed=0;
-  filtered.forEach(a => { sumTotal+=a.total; sumOpen+=a.open; sumClosed+=a.closed; });
+  // Summary (compute from filtered per-ticket data)
+  let sumTotal=0, sumClosed=0;
+  const allTatMins = [];
+  let psatSatisfied=0, psatConnected=0;
 
-  if (dateFilter === "all") {
-    renderSummary(DATA.summary);
-  } else {
-    renderSummary({
-      total:   sumTotal,
-      open:    sumOpen,
-      closed:  sumClosed,
-      res_pct: sumTotal ? +(sumClosed/sumTotal*100).toFixed(1) : 0,
-      avg_tat: DATA.summary.avg_tat,   // keep global avg TAT
+  filtered.forEach(ag => {
+    const ft = dateFilter === "all" ? (ag.tickets || [])
+      : (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
+    sumTotal += ft.length;
+    ft.forEach(t => {
+      if (t.closed) {
+        sumClosed++;
+        // parse TAT for median calculation
+        const m = parseTatToMins(t.tat);
+        if (m > 0) allTatMins.push(m);
+      }
     });
-  }
+    // PSAT from connected calls in date range
+    (ag.tickets || []).forEach(t => {
+      const hasPsat = t.psat !== null && t.psat !== undefined;
+      if ((t.calling_status === "Connected" || hasPsat) && hasPsat &&
+          inDateRange(t.call_dt || t.date, dateFilter)) {
+        psatConnected++;
+        if (t.psat === 1) psatSatisfied++;
+      }
+    });
+  });
+
+  // Median TAT
+  allTatMins.sort((a,b) => a - b);
+  const medianTat = allTatMins.length
+    ? allTatMins[Math.floor(allTatMins.length / 2)] : 0;
+
+  const psatPct = psatConnected ? +(psatSatisfied / psatConnected * 100).toFixed(1) : null;
+
+  renderSummary({
+    total:    sumTotal,
+    closed:   sumClosed,
+    res_pct:  sumTotal ? +(sumClosed/sumTotal*100).toFixed(1) : 0,
+    median_tat_mins: medianTat,
+    psat_pct: psatPct,
+    psat_n:   psatConnected,
+  });
 
   renderAgents(filtered, dateFilter);
   renderOpenTickets(DATA.open_tickets || []);
 }
 
+// ── TAT string → minutes parser (for median calc) ───────────────────────────
+function parseTatToMins(s) {
+  if (!s || s === "—" || s === "Open") return 0;
+  let mins = 0;
+  let m;
+  m = s.match(/(\d+)d/); if (m) mins += parseInt(m[1]) * 1440;
+  m = s.match(/(\d+)h/); if (m) mins += parseInt(m[1]) * 60;
+  m = s.match(/(\d+)m/); if (m) mins += parseInt(m[1]);
+  return mins;
+}
+
+function fmtTat(mins) {
+  if (mins <= 0) return "—";
+  if (mins < 60) return mins + "m";
+  const h = Math.floor(mins / 60), rm = mins % 60;
+  if (h < 24) return rm ? h + "h " + rm + "m" : h + "h";
+  const d = Math.floor(h / 24), rh = h % 24;
+  return rh ? d + "d " + rh + "h" : d + "d";
+}
+
 // ── Render summary ────────────────────────────────────────────────────────────
 function renderSummary(s) {
   document.getElementById("s-total").textContent = s.total.toLocaleString();
-  document.getElementById("s-open").textContent  = s.open.toLocaleString();
-  document.getElementById("s-closed").textContent= s.closed.toLocaleString();
   document.getElementById("s-res").textContent   = s.res_pct + "%";
-  document.getElementById("s-tat").textContent   = s.avg_tat || "—";
+  document.getElementById("s-res-sub").textContent = s.closed + " / " + s.total;
+  document.getElementById("s-tat").textContent   = fmtTat(s.median_tat_mins);
+  document.getElementById("s-psat").textContent  = s.psat_pct !== null ? s.psat_pct + "%" : "—";
+  document.getElementById("s-psat-n").textContent = s.psat_n.toLocaleString();
 }
 
 // ── Grade config ──────────────────────────────────────────────────────────────
@@ -501,15 +554,16 @@ function agentRowsHtml(agents, idPrefix, dateFilter) {
       // Calling status + PSAT combined
       let callHtml;
       const cs = t.calling_status;
-      if (!cs) {
-        callHtml = `<span class="psat-na">No call</span>`;
-      } else if (cs === "Connected") {
+      if (cs === "Connected" || (!cs && t.psat !== null && t.psat !== undefined)) {
+        // Connected call (or legacy data where calling_status wasn't saved yet)
         callHtml = t.psat === 1
           ? `<span class="psat-yes">✓ Satisfied</span>`
           : `<span class="psat-no">✗ Not Satisfied</span>`;
-      } else {
+      } else if (cs) {
         // DNP 1, DNP 2, DNP 3, etc.
         callHtml = `<span class="dnp-badge">${esc(cs)}</span>`;
+      } else {
+        callHtml = `<span class="psat-na">No call</span>`;
       }
       const link = t.url
         ? `<a href="${esc(t.url)}" target="_blank" class="kapture-link">Open ↗</a>`
