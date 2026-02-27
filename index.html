@@ -173,6 +173,40 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Quick filter buttons ── */
+    .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+    .qbtn {
+      padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+      background: #f8fafc; color: var(--muted); font-size: 12px; cursor: pointer;
+      transition: all .15s;
+    }
+    .qbtn:hover { border-color: var(--accent); color: var(--accent); }
+    .qbtn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+
+    /* ── Ticket drill-down ── */
+    .ticket-row { display: none; background: #f8fafc; }
+    .ticket-row.open { display: table-row; }
+    .ticket-inner { padding: 10px 14px 10px 20px; }
+    .ticket-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ticket-table th { padding: 7px 10px; text-align: left; font-weight: 600;
+                        color: var(--muted); background: #f1f5f9;
+                        border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .ticket-table td { padding: 7px 10px; border-bottom: 1px solid #eef0f3;
+                        vertical-align: top; max-width: 280px; }
+    .ticket-table tr:last-child td { border: none; }
+    .ticket-table tr:hover td { background: #eff6ff; }
+    .psat-yes { color: #16a34a; font-weight: 600; }
+    .psat-no  { color: #dc2626; font-weight: 600; }
+    .psat-na  { color: var(--muted); }
+    .kapture-link { color: var(--accent); text-decoration: none; font-size: 11px;
+                    white-space: nowrap; }
+    .kapture-link:hover { text-decoration: underline; }
+    .agent-name-btn { background: none; border: none; cursor: pointer;
+                      font-weight: 600; color: var(--accent); font-size: 14px;
+                      padding: 0; text-align: left; }
+    .agent-name-btn:hover { text-decoration: underline; }
+    .q-text { white-space: normal; word-break: break-word; }
+
     /* ── Grade sections ── */
     .grade-section { margin-bottom: 16px; border-radius: 10px; overflow: hidden;
                      border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.05); }
@@ -228,25 +262,36 @@
 
   <!-- Filters bar -->
   <div class="section" style="margin-bottom:16px">
-    <div class="section-header" style="border:none;padding:12px 18px">
-      <span class="section-title">Agent Performance</span>
-      <div class="filters">
-        <label style="font-size:12px;color:var(--muted)">Date:</label>
-        <select class="filter-select" id="dateFilter" onchange="applyFilters()">
-          <option value="all">All Time</option>
-          <option value="today">Today</option>
-          <option value="yesterday">Yesterday</option>
-          <option value="7d" selected>Last 7 Days</option>
-          <option value="30d">Last 30 Days</option>
-        </select>
-        <label style="font-size:12px;color:var(--muted)">Sort within grade:</label>
-        <select class="filter-select" id="sortBy" onchange="applyFilters()">
-          <option value="total">Total Tickets</option>
-          <option value="res_pct">Resolution %</option>
-          <option value="psat_pct">PSAT %</option>
-          <option value="avg_tat_mins">Avg TAT</option>
-        </select>
+    <div style="padding:14px 18px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <span class="section-title">Agent Performance</span>
+        <div class="filters">
+          <label style="font-size:12px;color:var(--muted)">Sort within grade:</label>
+          <select class="filter-select" id="sortBy" onchange="applyFilters()">
+            <option value="total">Total Tickets</option>
+            <option value="res_pct">Resolution %</option>
+            <option value="psat_pct">PSAT %</option>
+            <option value="avg_tat_mins">Avg TAT</option>
+          </select>
+        </div>
       </div>
+      <!-- Date filter row -->
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--muted);font-weight:500">Filter by date:</span>
+        <div class="quick-btns">
+          <button class="qbtn" data-v="all"       onclick="setQuick('all')">All Time</button>
+          <button class="qbtn" data-v="today"     onclick="setQuick('today')">Today</button>
+          <button class="qbtn" data-v="yesterday" onclick="setQuick('yesterday')">Yesterday</button>
+          <button class="qbtn active" data-v="7d" onclick="setQuick('7d')">Last 7 Days</button>
+          <button class="qbtn" data-v="30d"       onclick="setQuick('30d')">Last 30 Days</button>
+        </div>
+        <span style="font-size:12px;color:var(--muted)">or pick exact date:</span>
+        <input type="date" id="exactDate" class="filter-select" style="padding:5px 8px"
+               onchange="setExactDate(this.value)" />
+        <button id="clearDate" style="display:none;font-size:12px;color:var(--accent);
+                background:none;border:none;cursor:pointer;padding:0" onclick="clearExactDate()">✕ Clear</button>
+      </div>
+      <input type="hidden" id="dateFilter" value="7d" />
     </div>
   </div>
 
@@ -300,11 +345,35 @@ function daysAgo(n) {
 function inDateRange(dateStr, filter) {
   if (filter === "all") return true;
   if (!dateStr)         return false;
+  // exact date (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(filter)) return dateStr === filter;
   if (filter === "today")     return dateStr === today();
   if (filter === "yesterday") return dateStr === yesterday();
   if (filter === "7d")        return dateStr >= daysAgo(7);
   if (filter === "30d")       return dateStr >= daysAgo(30);
   return true;
+}
+
+function setQuick(val) {
+  document.getElementById("dateFilter").value = val;
+  document.getElementById("exactDate").value = "";
+  document.getElementById("clearDate").style.display = "none";
+  document.querySelectorAll(".qbtn").forEach(b => b.classList.toggle("active", b.dataset.v === val));
+  applyFilters();
+}
+
+function setExactDate(val) {
+  if (!val) return;
+  document.getElementById("dateFilter").value = val;
+  document.getElementById("clearDate").style.display = "inline";
+  document.querySelectorAll(".qbtn").forEach(b => b.classList.remove("active"));
+  applyFilters();
+}
+
+function clearExactDate() {
+  document.getElementById("exactDate").value = "";
+  document.getElementById("clearDate").style.display = "none";
+  setQuick("7d");
 }
 
 // ── Fetch data ────────────────────────────────────────────────────────────────
@@ -328,7 +397,7 @@ async function loadData(force = false) {
 function applyFilters() {
   if (!DATA) return;
 
-  const dateFilter = document.getElementById("dateFilter").value;
+  const dateFilter = document.getElementById("dateFilter").value || "7d";
   const sortBy     = document.getElementById("sortBy").value;
 
   // Re-filter agents' daily data
@@ -380,7 +449,7 @@ function applyFilters() {
     });
   }
 
-  renderAgents(filtered);
+  renderAgents(filtered, dateFilter);
   renderOpenTickets(DATA.open_tickets || []);
 }
 
@@ -412,42 +481,56 @@ function pbarHtml(pct, label) {
   </div>`;
 }
 
-function agentRowsHtml(agents, idPrefix) {
+function agentRowsHtml(agents, idPrefix, dateFilter) {
   return agents.map((ag, i) => {
     const uid = idPrefix + "-" + i;
     const psatBar = ag.psat_pct !== null
       ? pbarHtml(ag.psat_pct, ag.psat_pct + "%")
-      : `<span style="color:var(--muted)">No calls</span>`;
+      : `<span style="color:var(--muted)">—</span>`;
 
-    const dailyRows = (ag.daily || []).map(d =>
-      `<tr>
-        <td>${d.date}</td><td>${d.total}</td><td>${d.closed}</td>
-        <td>${d.total - d.closed}</td><td>${d.res_pct}%</td><td>${d.avg_tat}</td>
-      </tr>`
-    ).join("");
+    // Filter tickets by current date filter
+    const filteredTickets = (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
 
-    const hasDailyData = (ag.daily || []).length > 0;
+    const ticketRows = filteredTickets.map(t => {
+      const psatHtml = t.psat === 1
+        ? `<span class="psat-yes">✓ Satisfied</span>`
+        : t.psat === 0
+          ? `<span class="psat-no">✗ Not Satisfied</span>`
+          : `<span class="psat-na">—</span>`;
+      const link = t.url
+        ? `<a href="${esc(t.url)}" target="_blank" class="kapture-link">Open ↗</a>`
+        : "—";
+      return `<tr>
+        <td><code style="font-size:11px">${esc(t.id)}</code></td>
+        <td>${esc(t.bucket || "—")}</td>
+        <td class="q-text">${esc(t.question || "—")}</td>
+        <td>${psatHtml}</td>
+        <td>${esc(t.tat || "—")}</td>
+        <td>${link}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">No tickets for this date range</td></tr>`;
+
     return `
     <tr id="ag-row-${uid}">
-      <td class="agent-name-cell">${esc(ag.name)}</td>
+      <td><button class="agent-name-btn" onclick="toggleTickets('${uid}')">${esc(ag.name)}</button></td>
       <td><strong>${ag.total}</strong></td>
       <td style="color:var(--yellow)">${ag.open}</td>
       <td style="color:var(--green)">${ag.closed}</td>
       <td>${pbarHtml(ag.res_pct, ag.res_pct + "%")}</td>
       <td>${ag.avg_tat || "—"}</td>
       <td>${psatBar}</td>
-      <td>${hasDailyData
-        ? `<button class="expand-btn" onclick="toggleDaily('${uid}')">Day-wise ▾</button>`
-        : ""}</td>
+      <td style="color:var(--muted)">${ag.psat_n || 0}</td>
+      <td><button class="expand-btn" onclick="toggleTickets('${uid}')">Tickets ▾</button></td>
     </tr>
-    <tr class="daily-row" id="ag-daily-${uid}">
-      <td colspan="8">
-        <div class="daily-inner">
-          <table class="daily-table">
-            <thead><tr style="color:var(--muted);font-weight:600">
-              <td>Date</td><td>Total</td><td>Closed</td><td>Open</td><td>Res%</td><td>Avg TAT</td>
+    <tr class="ticket-row" id="ag-tickets-${uid}">
+      <td colspan="9">
+        <div class="ticket-inner">
+          <table class="ticket-table">
+            <thead><tr>
+              <th>Ticket ID</th><th>Issue Bucket</th><th>Question by Partner</th>
+              <th>PSAT</th><th>Resolution TAT</th><th>Kapture</th>
             </tr></thead>
-            <tbody>${dailyRows}</tbody>
+            <tbody>${ticketRows}</tbody>
           </table>
         </div>
       </td>
@@ -456,7 +539,7 @@ function agentRowsHtml(agents, idPrefix) {
 }
 
 // ── Render grade sections ─────────────────────────────────────────────────────
-function renderAgents(agents) {
+function renderAgents(agents, dateFilter) {
   const container = document.getElementById("gradeSections");
 
   if (!agents.length) {
@@ -476,9 +559,10 @@ function renderAgents(agents) {
     const list = byGrade[g.key];
     if (!list.length) return "";
 
-    const agentCount  = list.length;
+    const agentCount   = list.length;
     const totalTickets = list.reduce((s, a) => s + a.total, 0);
-    const avgPsat     = g.key !== "N/A"
+    const totalPsatN   = list.reduce((s, a) => s + (a.psat_n || 0), 0);
+    const avgPsat      = g.key !== "N/A"
       ? (list.reduce((s, a) => s + (a.psat_pct ?? 0), 0) / agentCount).toFixed(1) + "%"
       : "—";
 
@@ -495,6 +579,7 @@ function renderAgents(agents) {
             <div class="grade-section-meta">
               ${agentCount} agent${agentCount > 1 ? "s" : ""} &nbsp;·&nbsp;
               ${totalTickets} tickets &nbsp;·&nbsp;
+              ${totalPsatN} PSAT calls &nbsp;·&nbsp;
               Avg PSAT: ${avgPsat}
             </div>
           </div>
@@ -507,10 +592,10 @@ function renderAgents(agents) {
             <thead>
               <tr>
                 <th>Agent</th><th>Total</th><th>Open</th><th>Closed</th>
-                <th>Resolution</th><th>Avg TAT</th><th>PSAT %</th><th></th>
+                <th>Resolution</th><th>Avg TAT</th><th>PSAT %</th><th>PSAT Calls</th><th></th>
               </tr>
             </thead>
-            <tbody>${agentRowsHtml(list, g.key)}</tbody>
+            <tbody>${agentRowsHtml(list, g.key, dateFilter)}</tbody>
           </table>
         </div>
       </div>
@@ -525,13 +610,13 @@ function toggleSection(gradeKey) {
   arrow.classList.toggle("open", !collapsed);
 }
 
-function toggleDaily(uid) {
-  const row = document.getElementById("ag-daily-" + uid);
+function toggleTickets(uid) {
+  const row = document.getElementById("ag-tickets-" + uid);
   const btn = document.querySelector(`#ag-row-${uid} .expand-btn`);
   if (row.classList.toggle("open")) {
-    btn.textContent = "Day-wise ▴";
+    btn.textContent = "Tickets ▴";
   } else {
-    btn.textContent = "Day-wise ▾";
+    btn.textContent = "Tickets ▾";
   }
 }
 

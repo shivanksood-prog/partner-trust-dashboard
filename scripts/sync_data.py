@@ -146,6 +146,19 @@ def extract_ticket(api_obj: dict) -> dict | None:
     if tat_mins == 0 and created_dt and closed_dt:
         tat_mins = max(0, int((closed_dt - created_dt).total_seconds() / 60))
 
+    # Issue bucket — last 2 segments of disposition path
+    disposition = td.get("disposition", "")
+    parts = [p.strip() for p in disposition.split("|") if p.strip()]
+    bucket = " › ".join(parts[-2:]) if len(parts) >= 2 else (parts[-1] if parts else "")
+
+    # Question by partner — try multiple paths in additional_info
+    ai = api_obj.get("additional_info", {})
+    question = (
+        ai.get("partner_details_add_info", {}).get("question_by_partner", "")
+        or ai.get("ticket_source_info", {}).get("partner_app_ticket_title", "")
+        or td.get("title", "")
+    )
+
     return {
         "id":           tid,
         "agent":        td.get("assignedToName", "Unassigned").strip() or "Unassigned",
@@ -157,7 +170,10 @@ def extract_ticket(api_obj: dict) -> dict | None:
         "closed_at":    td.get("taskEnddate", ""),
         "tat_mins":     tat_mins,
         "title":        td.get("title", ""),
-        "disposition":  td.get("disposition", ""),
+        "disposition":  disposition,
+        "bucket":       bucket,
+        "question":     question[:250].strip(),
+        "url":          td.get("url", ""),
         "psat":         None,    # filled later
     }
 
@@ -194,6 +210,7 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
                 "tat_sum": 0, "tat_n": 0,
                 "psat_sum": 0, "psat_n": 0,
                 "daily": {},
+                "ticket_list": [],
             }
         a = agent_acc[agent]
         a["total"] += 1
@@ -224,6 +241,18 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
                     a["daily"][d]["tat_sum"] += tat
                     a["daily"][d]["tat_n"]   += 1
 
+        # Per-ticket display record
+        a["ticket_list"].append({
+            "id":       tid,
+            "date":     d,
+            "bucket":   t.get("bucket", ""),
+            "question": t.get("question", ""),
+            "psat":     t.get("psat"),
+            "tat":      fmt_tat(t.get("tat_mins", 0)) if t.get("is_closed") else "Open",
+            "url":      t.get("url", ""),
+            "closed":   t.get("is_closed", False),
+        })
+
     agents = []
     for name, a in agent_acc.items():
         res_pct   = round(a["closed"] / a["total"] * 100, 1) if a["total"] else 0
@@ -251,6 +280,9 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
                 "avg_tat": fmt_tat(day_tat),
             })
 
+        # Tickets sorted newest first
+        ticket_list = sorted(a["ticket_list"], key=lambda x: x["date"], reverse=True)
+
         agents.append({
             "name":         name,
             "total":        a["total"],
@@ -261,6 +293,7 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
             "avg_tat":      fmt_tat(avg_tat),
             "psat_pct":     psat_pct,
             "psat_n":       a["psat_n"],
+            "tickets":      ticket_list,
             "grade":        grade,
             "daily":        daily_list,
         })
