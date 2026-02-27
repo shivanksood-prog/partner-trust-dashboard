@@ -357,12 +357,12 @@ def main():
             all_ids.add(tid)
     print(f"Sheet has {len(all_ids)} ticket IDs")
 
-    # Decide what to fetch: new + still-open
-    known_closed = {tid for tid, t in tickets.items() if t.get("is_closed")}
+    # Decide what to fetch: new + still-open + any missing new fields (one-time backfill)
     new_ids      = all_ids - set(tickets.keys())
     open_ids     = {tid for tid, t in tickets.items() if not t.get("is_closed")}
-    to_fetch     = list(new_ids | open_ids)
-    print(f"To fetch: {len(to_fetch)} ({len(new_ids)} new, {len(open_ids)} open re-checks)")
+    backfill_ids = {tid for tid, t in tickets.items() if "url" not in t}  # missing new fields
+    to_fetch     = list(new_ids | open_ids | backfill_ids)
+    print(f"To fetch: {len(to_fetch)} ({len(new_ids)} new, {len(open_ids)} open, {len(backfill_ids)} backfill)")
 
     # Batch fetch from Kapture (50 per batch)
     BATCH = 50
