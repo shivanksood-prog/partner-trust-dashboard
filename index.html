@@ -195,9 +195,11 @@
                         vertical-align: top; max-width: 280px; }
     .ticket-table tr:last-child td { border: none; }
     .ticket-table tr:hover td { background: #eff6ff; }
-    .psat-yes { color: #16a34a; font-weight: 600; }
-    .psat-no  { color: #dc2626; font-weight: 600; }
-    .psat-na  { color: var(--muted); }
+    .psat-yes  { color: #16a34a; font-weight: 600; }
+    .psat-no   { color: #dc2626; font-weight: 600; }
+    .psat-na   { color: var(--muted); }
+    .dnp-badge { display:inline-block; padding:2px 7px; border-radius:4px;
+                 background:#f1f5f9; color:#64748b; font-size:11px; font-weight:600; }
     .kapture-link { color: var(--accent); text-decoration: none; font-size: 11px;
                     white-space: nowrap; }
     .kapture-link:hover { text-decoration: underline; }
@@ -400,27 +402,31 @@ function applyFilters() {
   const dateFilter = document.getElementById("dateFilter").value || "7d";
   const sortBy     = document.getElementById("sortBy").value;
 
-  // Re-filter agents' daily data
+  // Re-filter agents from per-ticket data (supports date filter + live PSAT)
   const filtered = DATA.agents.map(ag => {
-    if (dateFilter === "all") return ag;  // use pre-aggregated totals
+    if (dateFilter === "all") return ag;
 
-    // Rebuild from daily breakdown
-    let total=0, open=0, closed=0, tatSum=0, tatN=0;
-    (ag.daily || []).forEach(d => {
-      if (!inDateRange(d.date, dateFilter)) return;
-      total  += d.total;
-      closed += d.closed;
-      open   += (d.total - d.closed);
-      // tat is stored as string in daily — we don't have mins in daily for now
-    });
-    if (total === 0) return null;
+    const ft = (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
+    if (!ft.length) return null;
 
-    return {
-      ...ag,
-      total, open, closed,
+    const total  = ft.length;
+    const closed = ft.filter(t => t.closed).length;
+    const open   = total - closed;
+
+    // Recompute PSAT from filtered tickets only
+    const psatTickets = ft.filter(t => t.psat !== null && t.psat !== undefined);
+    const psatPct  = psatTickets.length
+      ? +(psatTickets.reduce((s,t) => s + t.psat, 0) / psatTickets.length * 100).toFixed(1)
+      : null;
+    const psatN = psatTickets.length;
+
+    const grade = psatPct === null ? "N/A"
+      : psatPct >= 90 ? "A" : psatPct >= 80 ? "B"
+      : psatPct >= 70 ? "C" : psatPct >= 60 ? "D" : "E";
+
+    return { ...ag, total, open, closed,
       res_pct: total ? +(closed/total*100).toFixed(1) : 0,
-      // keep psat from all-time (PSAT sheet doesn't have date filter)
-    };
+      psat_pct: psatPct, psat_n: psatN, grade };
   }).filter(Boolean);
 
   // Sort
@@ -492,11 +498,19 @@ function agentRowsHtml(agents, idPrefix, dateFilter) {
     const filteredTickets = (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
 
     const ticketRows = filteredTickets.map(t => {
-      const psatHtml = t.psat === 1
-        ? `<span class="psat-yes">✓ Satisfied</span>`
-        : t.psat === 0
-          ? `<span class="psat-no">✗ Not Satisfied</span>`
-          : `<span class="psat-na">—</span>`;
+      // Calling status + PSAT combined
+      let callHtml;
+      const cs = t.calling_status;
+      if (!cs) {
+        callHtml = `<span class="psat-na">No call</span>`;
+      } else if (cs === "Connected") {
+        callHtml = t.psat === 1
+          ? `<span class="psat-yes">✓ Satisfied</span>`
+          : `<span class="psat-no">✗ Not Satisfied</span>`;
+      } else {
+        // DNP 1, DNP 2, DNP 3, etc.
+        callHtml = `<span class="dnp-badge">${esc(cs)}</span>`;
+      }
       const link = t.url
         ? `<a href="${esc(t.url)}" target="_blank" class="kapture-link">Open ↗</a>`
         : "—";
@@ -504,7 +518,7 @@ function agentRowsHtml(agents, idPrefix, dateFilter) {
         <td><code style="font-size:11px">${esc(t.id)}</code></td>
         <td>${esc(t.bucket || "—")}</td>
         <td class="q-text">${esc(t.question || "—")}</td>
-        <td>${psatHtml}</td>
+        <td>${callHtml}</td>
         <td>${esc(t.tat || "—")}</td>
         <td>${link}</td>
       </tr>`;
@@ -528,7 +542,7 @@ function agentRowsHtml(agents, idPrefix, dateFilter) {
           <table class="ticket-table">
             <thead><tr>
               <th>Ticket ID</th><th>Issue Bucket</th><th>Question by Partner</th>
-              <th>PSAT</th><th>Resolution TAT</th><th>Kapture</th>
+              <th>Call Status / PSAT</th><th>Resolution TAT</th><th>Kapture</th>
             </tr></thead>
             <tbody>${ticketRows}</tbody>
           </table>

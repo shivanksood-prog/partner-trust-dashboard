@@ -160,40 +160,45 @@ def extract_ticket(api_obj: dict) -> dict | None:
     )
 
     return {
-        "id":           tid,
-        "agent":        td.get("assignedToName", "Unassigned").strip() or "Unassigned",
-        "status":       status,
-        "substatus":    substatus,
-        "is_closed":    is_closed,
-        "created":      td.get("date", ""),
-        "date":         created_dt.strftime("%Y-%m-%d") if created_dt else "",
-        "closed_at":    td.get("taskEnddate", ""),
-        "tat_mins":     tat_mins,
-        "title":        td.get("title", ""),
-        "disposition":  disposition,
-        "bucket":       bucket,
-        "question":     question[:250].strip(),
-        "url":          td.get("url", ""),
-        "psat":         None,    # filled later
+        "id":             tid,
+        "agent":          td.get("assignedToName", "Unassigned").strip() or "Unassigned",
+        "status":         status,
+        "substatus":      substatus,
+        "is_closed":      is_closed,
+        "created":        td.get("date", ""),
+        "date":           created_dt.strftime("%Y-%m-%d") if created_dt else "",
+        "closed_at":      td.get("taskEnddate", ""),
+        "tat_mins":       tat_mins,
+        "title":          td.get("title", ""),
+        "disposition":    disposition,
+        "bucket":         bucket,
+        "question":       question[:250].strip(),
+        "url":            td.get("url", ""),
+        "psat":           None,    # filled later
+        "calling_status": None,    # filled later
     }
 
 # ── PSAT ──────────────────────────────────────────────────────────────────────
 
-def load_psat() -> dict[str, int]:
-    """Returns {ticket_id: 0|1} for Connected rows only."""
+def load_psat() -> dict[str, dict]:
+    """Returns {ticket_id: {psat, calling_status}} for ALL called rows."""
     rows = fetch_csv(PSAT_SHEET)
     out = {}
     for row in rows:
-        # Connected column stores "1"/"0"; Calling Status stores "Connected"/DNP text
-        if row.get("Connected", "").strip() != "1":
+        calling_status = row.get("Calling Status", "").strip()
+        if not calling_status:
             continue
         tid = row.get("ticket_id", "").strip() or row.get("ptl_ticket_id", "").strip()
         if not tid:
             continue
-        try:
-            out[tid] = int(row.get("PSAT", "0").strip())
-        except ValueError:
-            out[tid] = 0
+        connected = row.get("Connected", "").strip() == "1"
+        psat = None
+        if connected:
+            try:
+                psat = int(row.get("PSAT", "0").strip())
+            except ValueError:
+                psat = 0
+        out[tid] = {"psat": psat, "calling_status": calling_status}
     return out
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
@@ -243,14 +248,15 @@ def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
 
         # Per-ticket display record
         a["ticket_list"].append({
-            "id":       tid,
-            "date":     d,
-            "bucket":   t.get("bucket", ""),
-            "question": t.get("question", ""),
-            "psat":     t.get("psat"),
-            "tat":      fmt_tat(t.get("tat_mins", 0)) if t.get("is_closed") else "Open",
-            "url":      t.get("url", ""),
-            "closed":   t.get("is_closed", False),
+            "id":             tid,
+            "date":           d,
+            "bucket":         t.get("bucket", ""),
+            "question":       t.get("question", ""),
+            "psat":           t.get("psat"),
+            "calling_status": t.get("calling_status"),
+            "tat":            fmt_tat(t.get("tat_mins", 0)) if t.get("is_closed") else "Open",
+            "url":            t.get("url", ""),
+            "closed":         t.get("is_closed", False),
         })
 
     agents = []
@@ -383,7 +389,8 @@ def main():
     psat_map = load_psat()
     for tid in tickets:
         if tid in psat_map:
-            tickets[tid]["psat"] = psat_map[tid]
+            tickets[tid]["psat"]           = psat_map[tid]["psat"]
+            tickets[tid]["calling_status"] = psat_map[tid]["calling_status"]
     print(f"PSAT matched {len(psat_map)} tickets")
 
     # Aggregate
