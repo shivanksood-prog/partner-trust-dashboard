@@ -1,723 +1,647 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Partner Trust Line — Agent Dashboard</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Partner Trust Line — Agent PSAT Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #FAF9FC;
+    --card:     #FFFFFF;
+    --border:   #D7D3E0;
+    --text:     #161021;
+    --muted:    #665E75;
+    --accent:   #D9008D;
+    --accent-soft: #FFE5F6;
+    --secondary:#443152;
+    --green:    #008043;
+    --green-soft:#E1FAED;
+    --red:      #E01E00;
+    --red-soft: #FFE9E5;
+    --amber:    #FF8000;
+    --amber-soft:#FFE6CC;
+    --purple:   #6D17CE;
+    --purple-soft:#F1E5FF;
+    --subtle:   #F1EDF7;
 
-    :root {
-      --bg:       #f4f6f9;
-      --card:     #ffffff;
-      --border:   #e2e8f0;
-      --text:     #1e293b;
-      --muted:    #64748b;
-      --accent:   #3b82f6;
-      --green:    #22c55e;
-      --red:      #ef4444;
-      --yellow:   #f59e0b;
+    --grade-a-bg: #E1FAED; --grade-a-fg: #008043;
+    --grade-b-bg: #DCE5FF; --grade-b-fg: #1E40AF;
+    --grade-c-bg: #FEF3C7; --grade-c-fg: #92400E;
+    --grade-d-bg: #FFE6CC; --grade-d-fg: #9A3412;
+    --grade-e-bg: #FFE9E5; --grade-e-fg: #E01E00;
+    --grade-n-bg: #F1EDF7; --grade-n-fg: #665E75;
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.45; }
 
-      --grade-a-bg: #d1fae5; --grade-a-fg: #065f46;
-      --grade-b-bg: #dbeafe; --grade-b-fg: #1e40af;
-      --grade-c-bg: #fef9c3; --grade-c-fg: #78350f;
-      --grade-d-bg: #ffedd5; --grade-d-fg: #9a3412;
-      --grade-e-bg: #fee2e2; --grade-e-fg: #991b1b;
-      --grade-n-bg: #f1f5f9; --grade-n-fg: #475569;
-    }
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, #443152 0%, #6D17CE 100%);
+    color: #FAF9FC; padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .header h1 { font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+  .header h1 .sub { font-weight: 400; font-size: 12px; opacity: 0.75; margin-left: 8px; }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .sync-info { display:flex; align-items:center; gap:8px; font-size:12px; color:#D7D3E0; }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 0 0 rgba(0,128,67,.5);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(0,128,67,.5); }
+    70%  { box-shadow: 0 0 0 6px rgba(0,128,67,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,128,67,0); }
+  }
+  .btn {
+    padding: 6px 13px; border-radius: 6px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 500; transition: opacity .15s, transform .1s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-ghost { background: rgba(255,255,255,.12); color: #FAF9FC; }
 
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-           background: var(--bg); color: var(--text); font-size: 14px; }
+  .container { max-width: 1400px; margin: 0 auto; padding: 18px 24px 60px; }
 
-    /* ── Header ── */
-    .header {
-      background: #1e293b;
-      color: #f8fafc;
-      padding: 14px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-      box-shadow: 0 2px 8px rgba(0,0,0,.2);
-    }
-    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: .3px; }
-    .header-right { display: flex; align-items: center; gap: 16px; }
-    .sync-info { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
-    .live-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 0 0 rgba(34,197,94,.4);
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%   { box-shadow: 0 0 0 0 rgba(34,197,94,.5); }
-      70%  { box-shadow: 0 0 0 6px rgba(34,197,94,0); }
-      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
-    }
-    .btn {
-      padding: 6px 14px; border-radius: 6px; border: none;
-      cursor: pointer; font-size: 13px; font-weight: 500;
-      transition: opacity .15s;
-    }
-    .btn:hover { opacity: .85; }
-    .btn-primary { background: var(--accent); color: #fff; }
-    .btn-ghost   { background: rgba(255,255,255,.12); color: #f8fafc; }
+  /* Overall reference strip */
+  .overall {
+    display: flex; flex-wrap: wrap; gap: 24px; align-items: center;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 18px; margin-bottom: 14px;
+    font-size: 13px; color: var(--muted);
+  }
+  .overall .item b { color: var(--text); font-size: 15px; font-weight: 700; margin-left: 4px; }
+  .overall .item.psat b { color: var(--accent); }
+  .overall .item.range { margin-left: auto; }
 
-    /* ── Layout ── */
-    .container { max-width: 1400px; margin: 0 auto; padding: 20px 24px; }
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 8px; margin-bottom: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 6px; width: fit-content;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .tab {
+    padding: 8px 18px; border-radius: 7px; cursor: pointer;
+    font-size: 14px; font-weight: 500; color: var(--muted);
+    transition: all .15s;
+  }
+  .tab:hover { background: var(--subtle); }
+  .tab.active {
+    background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+    color: #fff; font-weight: 600;
+  }
+  .tab .count {
+    background: rgba(255,255,255,0.25); color: inherit;
+    padding: 1px 7px; border-radius: 999px; font-size: 11px; margin-left: 6px;
+    font-weight: 600;
+  }
+  .tab:not(.active) .count {
+    background: var(--subtle); color: var(--muted);
+  }
 
-    /* ── Summary Cards ── */
-    .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
-    @media (max-width: 900px) { .cards { grid-template-columns: repeat(2, 1fr); } }
-    .card {
-      background: var(--card); border-radius: 10px;
-      padding: 16px 18px;
-      border: 1px solid var(--border);
-      box-shadow: 0 1px 3px rgba(0,0,0,.05);
-    }
-    .card-label { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
-                  color: var(--muted); margin-bottom: 6px; }
-    .card-value { font-size: 28px; font-weight: 700; color: var(--text); }
-    .card-sub   { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  /* Filter row */
+  .filter-row {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 14px; margin-bottom: 16px;
+  }
+  .filter-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--muted); margin-right: 4px;
+  }
+  .qbtn {
+    padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--card); cursor: pointer; font-size: 13px; color: var(--text);
+    transition: all .15s;
+  }
+  .qbtn:hover { border-color: var(--accent); color: var(--accent); }
+  .qbtn.active {
+    background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600;
+  }
+  .filter-row input[type="date"] {
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; color: var(--text); background: var(--card);
+  }
+  .filter-row .clear {
+    color: var(--accent); font-size: 12px; background: none; border: none;
+    cursor: pointer; text-decoration: underline;
+  }
 
-    /* ── Section ── */
-    .section {
-      background: var(--card); border-radius: 10px;
-      border: 1px solid var(--border); margin-bottom: 20px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.05);
-    }
-    .section-header {
-      padding: 14px 18px; border-bottom: 1px solid var(--border);
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      flex-wrap: wrap;
-    }
-    .section-title { font-size: 15px; font-weight: 600; }
+  /* KPI strip per view */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+  .kpi {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+  .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase;
+                letter-spacing: 0.5px; font-weight: 600; }
+  .kpi .value { font-size: 28px; font-weight: 700; color: var(--text); margin-top: 4px; line-height: 1; }
+  .kpi .value.psat { color: var(--accent); }
+  .kpi .sub { font-size: 12px; color: var(--muted); margin-top: 6px; }
 
-    /* ── Filters ── */
-    .filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .filter-select {
-      padding: 5px 10px; border-radius: 6px;
-      border: 1px solid var(--border); background: #f8fafc;
-      font-size: 13px; color: var(--text); cursor: pointer;
-    }
+  /* Grade sections */
+  .grade-section { margin-bottom: 20px; }
+  .grade-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; cursor: pointer; user-select: none;
+    transition: background .15s;
+  }
+  .grade-header:hover { background: var(--subtle); }
+  .grade-header .caret { font-size: 11px; color: var(--muted); transition: transform .15s; }
+  .grade-section.collapsed .caret { transform: rotate(-90deg); }
+  .grade-section.collapsed .grade-body { display: none; }
+  .grade-chip {
+    padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 700;
+    min-width: 32px; text-align: center;
+  }
+  .grade-chip.A { background: var(--grade-a-bg); color: var(--grade-a-fg); }
+  .grade-chip.B { background: var(--grade-b-bg); color: var(--grade-b-fg); }
+  .grade-chip.C { background: var(--grade-c-bg); color: var(--grade-c-fg); }
+  .grade-chip.D { background: var(--grade-d-bg); color: var(--grade-d-fg); }
+  .grade-chip.E { background: var(--grade-e-bg); color: var(--grade-e-fg); }
+  .grade-chip.N { background: var(--grade-n-bg); color: var(--grade-n-fg); }
+  .grade-meta { font-size: 13px; color: var(--muted); }
+  .grade-meta .agents-n { color: var(--text); font-weight: 600; }
 
-    /* ── Table ── */
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; }
-    thead th {
-      padding: 10px 14px; text-align: left;
-      font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: .6px; color: var(--muted);
-      background: #f8fafc; border-bottom: 1px solid var(--border);
-      white-space: nowrap; cursor: pointer; user-select: none;
-    }
-    thead th:hover { color: var(--accent); }
-    thead th.sorted { color: var(--accent); }
-    thead th.sorted::after { content: " ↓"; }
-    thead th.sorted.asc::after { content: " ↑"; }
-    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
-    tbody tr:last-child { border-bottom: none; }
-    tbody tr:hover { background: #f8fafc; }
-    tbody td { padding: 11px 14px; vertical-align: middle; white-space: nowrap; }
+  .grade-body { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 
-    /* ── Grade Badge ── */
-    .grade {
-      display: inline-block; width: 26px; height: 26px;
-      border-radius: 50%; text-align: center; line-height: 26px;
-      font-size: 12px; font-weight: 700;
-    }
-    .grade-A { background: var(--grade-a-bg); color: var(--grade-a-fg); }
-    .grade-B { background: var(--grade-b-bg); color: var(--grade-b-fg); }
-    .grade-C { background: var(--grade-c-bg); color: var(--grade-c-fg); }
-    .grade-D { background: var(--grade-d-bg); color: var(--grade-d-fg); }
-    .grade-E { background: var(--grade-e-bg); color: var(--grade-e-fg); }
-    .grade-NA{ background: var(--grade-n-bg); color: var(--grade-n-fg); }
+  /* Agent row */
+  .agent {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+  .agent-head {
+    display: grid;
+    grid-template-columns: 32px 1.6fr 0.7fr 0.7fr 0.7fr 0.7fr 0.9fr 32px;
+    gap: 12px; align-items: center;
+    padding: 12px 16px; cursor: pointer; user-select: none;
+    transition: background .15s;
+  }
+  .agent-head:hover { background: var(--subtle); }
+  .agent.open .agent-head { background: var(--subtle); border-bottom: 1px solid var(--border); }
+  .agent-rank { font-size: 13px; font-weight: 700; color: var(--muted); text-align: center; }
+  .agent-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .agent-name .meta { display: block; font-weight: 400; font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .agent-metric { text-align: right; font-size: 13px; }
+  .agent-metric .num { font-weight: 700; color: var(--text); font-size: 15px; }
+  .agent-metric .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase;
+                       letter-spacing: 0.5px; margin-top: 1px; display: block; }
+  .agent-metric.psat .num { color: var(--accent); }
+  .agent-metric.sat .num { color: var(--green); }
+  .agent-metric.nsat .num { color: var(--red); }
+  .agent-grade { display: flex; justify-content: flex-end; }
+  .agent-grade .grade-chip { font-size: 13px; padding: 3px 10px; min-width: 28px; }
+  .agent-caret { color: var(--muted); transition: transform .15s; text-align: center; font-size: 12px; }
+  .agent.open .agent-caret { transform: rotate(90deg); color: var(--accent); }
 
-    /* ── Progress Bar ── */
-    .pbar-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
-    .pbar { flex: 1; height: 6px; border-radius: 3px; background: #e2e8f0; overflow: hidden; }
-    .pbar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
-    .pbar-fill.green  { background: var(--green); }
-    .pbar-fill.yellow { background: var(--yellow); }
-    .pbar-fill.red    { background: var(--red); }
-    .pbar-label { font-size: 12px; color: var(--muted); min-width: 36px; text-align: right; }
+  /* PSAT bar */
+  .psat-bar {
+    display: inline-block; height: 5px; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    margin-top: 4px; min-width: 4px; vertical-align: middle;
+  }
+  .psat-bar-track {
+    display: block; width: 100%; height: 5px; border-radius: 3px;
+    background: var(--subtle); margin-top: 4px; overflow: hidden;
+  }
+  .psat-bar-track > span {
+    display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--purple));
+    border-radius: 3px;
+  }
 
-    /* ── Expandable row ── */
-    .expand-btn { background: none; border: none; cursor: pointer; color: var(--accent);
-                  font-size: 12px; padding: 2px 6px; border-radius: 4px; }
-    .expand-btn:hover { background: #eff6ff; }
-    .daily-row { display: none; background: #f8fafc; }
-    .daily-row.open { display: table-row; }
-    .daily-inner { padding: 8px 14px 8px 40px; }
-    .daily-table { width: 100%; border-collapse: collapse; }
-    .daily-table td { padding: 5px 10px; font-size: 12px; color: var(--muted);
-                       border-bottom: 1px solid #e9ecef; }
-    .daily-table tr:last-child td { border: none; }
+  /* Drill-down */
+  .agent-body { padding: 14px 16px; background: #fcfbfe; }
+  .agent-body .stats-row {
+    display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 12px;
+    font-size: 12px; color: var(--muted);
+  }
+  .agent-body .stats-row b { color: var(--text); font-weight: 700; }
 
-    /* ── Open Tickets ── */
-    .open-badge {
-      display: inline-block; background: #fef3c7; color: #92400e;
-      border-radius: 4px; padding: 2px 7px; font-size: 11px; font-weight: 600;
-    }
-    .age-warn { color: var(--red); font-weight: 600; }
+  table.tickets { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.tickets th {
+    background: var(--subtle); padding: 8px 10px; text-align: left;
+    font-weight: 600; font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: 0.4px; color: var(--muted);
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  table.tickets td {
+    padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  table.tickets tr:last-child td { border-bottom: none; }
+  table.tickets tr:hover td { background: rgba(217,0,141,0.03); }
+  table.tickets td.phone { font-family: ui-monospace, Menlo, monospace; color: var(--accent); font-weight: 600; white-space: nowrap; }
+  table.tickets td.tid a { color: var(--purple); text-decoration: none; font-family: ui-monospace, monospace; font-size: 11px; }
+  table.tickets td.tid a:hover { text-decoration: underline; }
+  table.tickets td.date { color: var(--muted); white-space: nowrap; font-size: 11.5px; }
+  table.tickets td.question { color: var(--text); font-size: 12px; max-width: 360px; }
 
-    /* ── Loading / Error ── */
-    .state-msg {
-      text-align: center; padding: 60px 20px;
-      color: var(--muted); font-size: 15px;
-    }
-    .spinner {
-      width: 32px; height: 32px; border: 3px solid var(--border);
-      border-top-color: var(--accent); border-radius: 50%;
-      animation: spin .7s linear infinite; margin: 0 auto 12px;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 5px;
+           font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.sat   { background: var(--green-soft); color: var(--green); }
+  .badge.nsat  { background: var(--red-soft);   color: var(--red); }
+  .badge.cb    { background: var(--amber-soft); color: var(--amber); }
+  .badge.dnp   { background: var(--subtle);     color: var(--muted); }
+  .badge.tier  { background: var(--purple-soft); color: var(--purple); }
+  .badge.bucket{ background: var(--accent-soft); color: var(--accent); }
 
-    /* ── Quick filter buttons ── */
-    .quick-btns { display: flex; gap: 6px; flex-wrap: wrap; }
-    .qbtn {
-      padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
-      background: #f8fafc; color: var(--muted); font-size: 12px; cursor: pointer;
-      transition: all .15s;
-    }
-    .qbtn:hover { border-color: var(--accent); color: var(--accent); }
-    .qbtn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+  .ticket-controls {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .ticket-controls input[type="search"] {
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; flex: 1; max-width: 280px;
+  }
+  .ticket-controls select {
+    padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 12px; background: var(--card);
+  }
 
-    /* ── Ticket drill-down ── */
-    .ticket-row { display: none; background: #f8fafc; }
-    .ticket-row.open { display: table-row; }
-    .ticket-inner { padding: 10px 14px 10px 20px; }
-    .ticket-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .ticket-table th { padding: 7px 10px; text-align: left; font-weight: 600;
-                        color: var(--muted); background: #f1f5f9;
-                        border-bottom: 1px solid var(--border); white-space: nowrap; }
-    .ticket-table td { padding: 7px 10px; border-bottom: 1px solid #eef0f3;
-                        vertical-align: top; max-width: 280px; }
-    .ticket-table tr:last-child td { border: none; }
-    .ticket-table tr:hover td { background: #eff6ff; }
-    .psat-yes  { color: #16a34a; font-weight: 600; }
-    .psat-no   { color: #dc2626; font-weight: 600; }
-    .psat-na   { color: var(--muted); }
-    .dnp-badge { display:inline-block; padding:2px 7px; border-radius:4px;
-                 background:#f1f5f9; color:#64748b; font-size:11px; font-weight:600; }
-    .kapture-link { color: var(--accent); text-decoration: none; font-size: 11px;
-                    white-space: nowrap; }
-    .kapture-link:hover { text-decoration: underline; }
-    .agent-name-btn { background: none; border: none; cursor: pointer;
-                      font-weight: 600; color: var(--accent); font-size: 14px;
-                      padding: 0; text-align: left; }
-    .agent-name-btn:hover { text-decoration: underline; }
-    .q-text { white-space: normal; word-break: break-word; }
-
-    /* ── Grade sections ── */
-    .grade-section { margin-bottom: 16px; border-radius: 10px; overflow: hidden;
-                     border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,.05); }
-    .grade-section-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 18px; cursor: pointer; user-select: none;
-      border-bottom: 1px solid var(--border);
-    }
-    .grade-section-header:hover { opacity: .9; }
-    .grade-section-header .left { display: flex; align-items: center; gap: 12px; }
-    .grade-label-big {
-      width: 36px; height: 36px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px; font-weight: 800;
-    }
-    .grade-section-title { font-size: 15px; font-weight: 600; }
-    .grade-section-meta  { font-size: 12px; color: var(--muted); }
-    .grade-section-body  { background: var(--card); }
-    .grade-section-body.collapsed { display: none; }
-    .toggle-arrow { font-size: 12px; color: var(--muted); transition: transform .2s; }
-    .toggle-arrow.open { transform: rotate(180deg); }
-    .agent-name-cell { font-weight: 600; }
-    .no-data { text-align: center; padding: 30px; color: var(--muted); }
-  </style>
+  .empty { padding: 30px; text-align: center; color: var(--muted); font-size: 13px;
+           background: var(--card); border: 1px dashed var(--border); border-radius: 10px; }
+  .footer { margin-top: 30px; text-align: center; font-size: 11px; color: var(--muted); }
+</style>
 </head>
 <body>
 
-<!-- ── Header ─────────────────────────────────────────────── -->
-<header class="header">
-  <div>
-    <h1>Partner Trust Line &mdash; Agent Dashboard</h1>
-  </div>
+<div class="header">
+  <h1>Partner Trust Line — Agent PSAT <span class="sub">live · updates every 15 min</span></h1>
   <div class="header-right">
-    <div class="sync-info">
-      <span class="live-dot"></span>
-      <span id="lastUpdated">Loading…</span>
-    </div>
+    <div class="sync-info"><span class="live-dot"></span><span id="lastUpdated">Loading…</span></div>
     <button class="btn btn-ghost" onclick="loadData(true)">↻ Refresh</button>
   </div>
-</header>
+</div>
 
-<!-- ── Main ───────────────────────────────────────────────── -->
 <div class="container">
 
-  <!-- Summary Cards -->
-  <div class="cards" id="cards">
-    <div class="card"><div class="card-label">Total Tickets</div><div class="card-value" id="s-total">—</div></div>
-    <div class="card"><div class="card-label">Resolution %</div><div class="card-value" id="s-res">—</div><div class="card-sub" id="s-res-sub">closed / total</div></div>
-    <div class="card"><div class="card-label">Median Resolution TAT</div><div class="card-value" id="s-tat">—</div><div class="card-sub">closed tickets</div></div>
-    <div class="card"><div class="card-label">PSAT %</div><div class="card-value" id="s-psat" style="color:var(--green)">—</div><div class="card-sub" id="s-psat-sub">satisfied / connected calls</div></div>
-    <div class="card"><div class="card-label">PSAT Calls</div><div class="card-value" id="s-psat-n" style="color:var(--accent)">—</div><div class="card-sub">connected calls</div></div>
+  <div class="overall">
+    <div class="item">Platform PSAT <b id="overallPsat">—</b></div>
+    <div class="item">Feedback calls <b id="overallFeedback">—</b></div>
+    <div class="item">Connected <b id="overallConnected">—</b></div>
+    <div class="item">Total rows <b id="overallRows">—</b></div>
+    <div class="item range" id="dataRange">—</div>
   </div>
 
-  <!-- Filters bar -->
-  <div class="section" style="margin-bottom:16px">
-    <div style="padding:14px 18px">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-        <span class="section-title">Agent Performance</span>
-        <div class="filters">
-          <label style="font-size:12px;color:var(--muted)">Sort within grade:</label>
-          <select class="filter-select" id="sortBy" onchange="applyFilters()">
-            <option value="total">Total Tickets</option>
-            <option value="res_pct">Resolution %</option>
-            <option value="psat_pct">PSAT %</option>
-            <option value="avg_tat_mins">Avg TAT</option>
-          </select>
-        </div>
-      </div>
-      <!-- Date filter row -->
-      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-size:12px;color:var(--muted);font-weight:500">Filter by date:</span>
-        <div class="quick-btns">
-          <button class="qbtn" data-v="all"       onclick="setQuick('all')">All Time</button>
-          <button class="qbtn" data-v="today"     onclick="setQuick('today')">Today</button>
-          <button class="qbtn" data-v="yesterday" onclick="setQuick('yesterday')">Yesterday</button>
-          <button class="qbtn active" data-v="7d" onclick="setQuick('7d')">Last 7 Days</button>
-          <button class="qbtn" data-v="30d"       onclick="setQuick('30d')">Last 30 Days</button>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">or pick exact date:</span>
-        <input type="date" id="exactDate" class="filter-select" style="padding:5px 8px"
-               onchange="setExactDate(this.value)" />
-        <button id="clearDate" style="display:none;font-size:12px;color:var(--accent);
-                background:none;border:none;cursor:pointer;padding:0" onclick="clearExactDate()">✕ Clear</button>
-      </div>
-      <input type="hidden" id="dateFilter" value="7d" />
-    </div>
+  <div class="tabs">
+    <div class="tab active" data-view="L2" onclick="setView('L2')">L2 <span class="count" id="tabL2">—</span></div>
+    <div class="tab" data-view="L1_NEWPROJ" onclick="setView('L1_NEWPROJ')">L1 + NewProject <span class="count" id="tabL1NP">—</span></div>
   </div>
 
-  <!-- Grade sections rendered here -->
-  <div id="gradeSections">
-    <div class="state-msg"><div class="spinner"></div>Loading…</div>
+  <div class="filter-row">
+    <span class="filter-label">Date</span>
+    <button class="qbtn" data-v="all" onclick="setQuick('all')">All</button>
+    <button class="qbtn" data-v="today" onclick="setQuick('today')">Today</button>
+    <button class="qbtn" data-v="yesterday" onclick="setQuick('yesterday')">Yesterday</button>
+    <button class="qbtn active" data-v="7d" onclick="setQuick('7d')">Last 7 days</button>
+    <button class="qbtn" data-v="30d" onclick="setQuick('30d')">Last 30 days</button>
+    <span style="margin-left: 12px;"></span>
+    <input type="date" id="exactDate" onchange="setExactDate(this.value)" />
+    <button id="clearDate" class="clear" style="display:none" onclick="clearExactDate()">Clear</button>
   </div>
 
-  <!-- Open Tickets -->
-  <div class="section">
-    <div class="section-header">
-      <span class="section-title">Open Tickets <span id="openCount" class="open-badge">0</span></span>
-      <span style="font-size:12px;color:var(--muted)">Re-synced every 15 min · Sorted by age (oldest first)</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Ticket ID</th>
-            <th>Agent</th>
-            <th>Title</th>
-            <th>Created</th>
-            <th>Age</th>
-          </tr>
-        </thead>
-        <tbody id="openBody">
-          <tr><td colspan="5"><div class="state-msg"><div class="spinner"></div>Loading…</div></td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <div class="kpi-row" id="kpiRow"></div>
 
-</div><!-- /container -->
+  <div id="content"></div>
+
+  <div class="footer" id="footer"></div>
+</div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────────────────────
-let DATA = null;
-const DATA_URL = "./data/data.json";
+let RAW = null;
+let CURRENT_VIEW = 'L2';
+let DATE_FILTER = '7d';  // 'all'|'today'|'yesterday'|'7d'|'30d'|'YYYY-MM-DD'
+let MAX_DATE = null;     // latest date observed in data — used as "today" anchor
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
-function today()     { return new Date().toISOString().slice(0,10); }
-function yesterday() {
-  const d = new Date(); d.setDate(d.getDate()-1);
-  return d.toISOString().slice(0,10);
-}
-function daysAgo(n) {
-  const d = new Date(); d.setDate(d.getDate()-n);
-  return d.toISOString().slice(0,10);
-}
+const COLLAPSED_GRADES = new Set();    // grade keys that are collapsed
+const OPEN_AGENTS = new Set();         // agent names currently expanded
 
-function inDateRange(dateStr, filter) {
-  if (filter === "all") return true;
-  if (!dateStr)         return false;
+/* ── Date helpers ──────────────────────────────────────────────────────────── */
+function isoDate(d) { return d.toISOString().slice(0,10); }
+function daysAgo(anchor, n) {
+  const d = new Date(anchor + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() - n);
+  return isoDate(d);
+}
+function inRange(dateStr, filter, anchor) {
+  if (!dateStr) return false;
+  if (filter === 'all') return true;
+  if (filter === 'today')     return dateStr === anchor;
+  if (filter === 'yesterday') return dateStr === daysAgo(anchor, 1);
+  if (filter === '7d')        return dateStr >= daysAgo(anchor, 6)  && dateStr <= anchor;
+  if (filter === '30d')       return dateStr >= daysAgo(anchor, 29) && dateStr <= anchor;
   // exact date (YYYY-MM-DD)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(filter)) return dateStr === filter;
-  if (filter === "today")     return dateStr === today();
-  if (filter === "yesterday") return dateStr === yesterday();
-  if (filter === "7d")        return dateStr >= daysAgo(7);
-  if (filter === "30d")       return dateStr >= daysAgo(30);
-  return true;
+  return dateStr === filter;
 }
 
+/* ── Aggregation (client-side, from tickets array) ─────────────────────────── */
+function gradeFor(psatPct) {
+  if (psatPct === null || psatPct === undefined) return 'N/A';
+  if (psatPct >= 90) return 'A';
+  if (psatPct >= 80) return 'B';
+  if (psatPct >= 70) return 'C';
+  if (psatPct >= 60) return 'D';
+  return 'E';
+}
+
+function computeAgent(agent, filter, anchor) {
+  const filtered = agent.tickets.filter(t => inRange(t.date, filter, anchor));
+  let total = 0, connected = 0, feedback = 0, satisfied = 0, notSat = 0,
+      callBack = 0, dnp = 0;
+  for (const t of filtered) {
+    total++;
+    const cs = t.calling_status || '';
+    const ss = t.sat_status || '';
+    if (cs === 'Connected') connected++;
+    if (cs === 'Connected' && (ss === 'Satisfied' || ss === 'Not Satisfied')) feedback++;
+    if (cs === 'Connected' && ss === 'Satisfied') satisfied++;
+    if (ss === 'Not Satisfied') notSat++;
+    if (ss === 'Call Back') callBack++;
+    if (cs.startsWith('DNP')) dnp++;
+  }
+  const psatPct = feedback ? Math.round(satisfied / feedback * 1000) / 10 : null;
+  return {
+    name: agent.name,
+    total, connected, feedback, satisfied, notSat, callBack, dnp,
+    psatPct,
+    grade: gradeFor(psatPct),
+    tickets: filtered,
+  };
+}
+
+function computeView(viewKey, filter, anchor) {
+  const view = RAW.views[viewKey];
+  const agents = view.agents.map(a => computeAgent(a, filter, anchor))
+    .filter(a => a.total > 0);   // hide agents with no calls in range
+  let total = 0, connected = 0, feedback = 0, satisfied = 0;
+  for (const a of agents) {
+    total += a.total; connected += a.connected;
+    feedback += a.feedback; satisfied += a.satisfied;
+  }
+  const psatPct = feedback ? Math.round(satisfied / feedback * 1000) / 10 : null;
+  // Sort agents: graded first by PSAT% desc, unranked last by feedback desc
+  agents.sort((x, y) => {
+    const xN = x.psatPct === null ? -1 : x.psatPct;
+    const yN = y.psatPct === null ? -1 : y.psatPct;
+    if (yN !== xN) return yN - xN;
+    return y.feedback - x.feedback;
+  });
+  return {
+    label: view.label,
+    summary: { total, connected, feedback, satisfied, psatPct },
+    agents,
+  };
+}
+
+/* ── UI: tab + date controls ───────────────────────────────────────────────── */
+function setView(v) {
+  CURRENT_VIEW = v;
+  document.querySelectorAll('.tab').forEach(el => {
+    el.classList.toggle('active', el.dataset.view === v);
+  });
+  OPEN_AGENTS.clear();
+  render();
+}
 function setQuick(val) {
-  document.getElementById("dateFilter").value = val;
-  document.getElementById("exactDate").value = "";
-  document.getElementById("clearDate").style.display = "none";
-  document.querySelectorAll(".qbtn").forEach(b => b.classList.toggle("active", b.dataset.v === val));
-  applyFilters();
+  DATE_FILTER = val;
+  document.querySelectorAll('.qbtn').forEach(b => {
+    b.classList.toggle('active', b.dataset.v === val);
+  });
+  document.getElementById('exactDate').value = '';
+  document.getElementById('clearDate').style.display = 'none';
+  render();
 }
-
 function setExactDate(val) {
   if (!val) return;
-  document.getElementById("dateFilter").value = val;
-  document.getElementById("clearDate").style.display = "inline";
-  document.querySelectorAll(".qbtn").forEach(b => b.classList.remove("active"));
-  applyFilters();
+  DATE_FILTER = val;
+  document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
+  document.getElementById('clearDate').style.display = '';
+  render();
 }
-
 function clearExactDate() {
-  document.getElementById("exactDate").value = "";
-  document.getElementById("clearDate").style.display = "none";
-  setQuick("7d");
+  document.getElementById('exactDate').value = '';
+  setQuick('7d');
 }
 
-// ── Fetch data ────────────────────────────────────────────────────────────────
-async function loadData(force = false) {
-  document.getElementById("lastUpdated").textContent = "Refreshing…";
-  try {
-    const url = DATA_URL + "?t=" + Date.now();
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    DATA = await resp.json();
-    document.getElementById("lastUpdated").textContent =
-      "Last synced: " + DATA.last_updated;
-    applyFilters();
-  } catch (e) {
-    document.getElementById("lastUpdated").textContent = "Error loading data";
-    console.error(e);
-  }
+/* ── Render ────────────────────────────────────────────────────────────────── */
+function fmtPct(v) { return v === null ? '—' : v.toFixed(1) + '%'; }
+
+function badgeForSat(ss, cs) {
+  if (ss === 'Satisfied')     return '<span class="badge sat">Satisfied</span>';
+  if (ss === 'Not Satisfied') return '<span class="badge nsat">Not Satisfied</span>';
+  if (ss === 'Call Back')     return '<span class="badge cb">Call Back</span>';
+  if (cs && cs.startsWith('DNP')) return `<span class="badge dnp">${cs}</span>`;
+  return `<span class="badge dnp">${cs || 'Uncalled'}</span>`;
 }
 
-// ── Filter & reaggregate ──────────────────────────────────────────────────────
-function applyFilters() {
-  if (!DATA) return;
-
-  const dateFilter = document.getElementById("dateFilter").value || "7d";
-  const sortBy     = document.getElementById("sortBy").value;
-
-  // Re-filter agents from per-ticket data (supports date filter + live PSAT)
-  const filtered = DATA.agents.map(ag => {
-    if (dateFilter === "all") return ag;
-
-    const ft = (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
-    if (!ft.length) return null;
-
-    const total  = ft.length;
-    const closed = ft.filter(t => t.closed).length;
-    const open   = total - closed;
-
-    // PSAT filtered by call_dt (date the PSAT call was made), not ticket creation date
-    const psatTickets = (ag.tickets || []).filter(t =>
-      (t.calling_status === "Connected" || (t.psat !== null && t.psat !== undefined)) &&
-      t.psat !== null && t.psat !== undefined &&
-      inDateRange(t.call_dt || t.date, dateFilter)
-    );
-    const psatPct = psatTickets.length
-      ? +(psatTickets.reduce((s,t) => s + t.psat, 0) / psatTickets.length * 100).toFixed(1)
-      : null;
-    const psatN = psatTickets.length;
-
-    const grade = psatPct === null ? "N/A"
-      : psatPct >= 90 ? "A" : psatPct >= 80 ? "B"
-      : psatPct >= 70 ? "C" : psatPct >= 60 ? "D" : "E";
-
-    return { ...ag, total, open, closed,
-      res_pct: total ? +(closed/total*100).toFixed(1) : 0,
-      psat_pct: psatPct, psat_n: psatN, grade };
-  }).filter(Boolean);
-
-  // Sort
-  const gradeOrder = { A:0, B:1, C:2, D:3, E:4, "N/A":5 };
-  filtered.sort((a, b) => {
-    if (sortBy === "grade")        return (gradeOrder[a.grade]||5) - (gradeOrder[b.grade]||5);
-    if (sortBy === "psat_pct")     return (b.psat_pct ?? -1) - (a.psat_pct ?? -1);
-    if (sortBy === "res_pct")      return b.res_pct - a.res_pct;
-    if (sortBy === "avg_tat_mins") return a.avg_tat_mins - b.avg_tat_mins;  // lower is better
-    return b.total - a.total;
-  });
-
-  // Summary (compute from filtered per-ticket data)
-  let sumTotal=0, sumClosed=0;
-  const allTatMins = [];
-  let psatSatisfied=0, psatConnected=0;
-
-  filtered.forEach(ag => {
-    const ft = dateFilter === "all" ? (ag.tickets || [])
-      : (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
-    sumTotal += ft.length;
-    ft.forEach(t => {
-      if (t.closed) {
-        sumClosed++;
-        // parse TAT for median calculation
-        const m = parseTatToMins(t.tat);
-        if (m > 0) allTatMins.push(m);
-      }
-    });
-    // PSAT from connected calls in date range
-    (ag.tickets || []).forEach(t => {
-      const hasPsat = t.psat !== null && t.psat !== undefined;
-      if ((t.calling_status === "Connected" || hasPsat) && hasPsat &&
-          inDateRange(t.call_dt || t.date, dateFilter)) {
-        psatConnected++;
-        if (t.psat === 1) psatSatisfied++;
-      }
-    });
-  });
-
-  // Median TAT
-  allTatMins.sort((a,b) => a - b);
-  const medianTat = allTatMins.length
-    ? allTatMins[Math.floor(allTatMins.length / 2)] : 0;
-
-  const psatPct = psatConnected ? +(psatSatisfied / psatConnected * 100).toFixed(1) : null;
-
-  renderSummary({
-    total:    sumTotal,
-    closed:   sumClosed,
-    res_pct:  sumTotal ? +(sumClosed/sumTotal*100).toFixed(1) : 0,
-    median_tat_mins: medianTat,
-    psat_pct: psatPct,
-    psat_n:   psatConnected,
-  });
-
-  renderAgents(filtered, dateFilter);
-  renderOpenTickets(DATA.open_tickets || []);
+function renderOverall() {
+  const o = RAW.overall;
+  document.getElementById('overallPsat').textContent       = fmtPct(o.psat_pct);
+  document.getElementById('overallFeedback').textContent   = o.feedback.toLocaleString();
+  document.getElementById('overallConnected').textContent  = o.connected.toLocaleString();
+  document.getElementById('overallRows').textContent       = o.total_rows.toLocaleString();
+  document.getElementById('dataRange').textContent =
+    `Data range: ${RAW.date_range.from} → ${RAW.date_range.to}`;
+  document.getElementById('lastUpdated').textContent = `Updated ${RAW.last_updated}`;
+  document.getElementById('tabL2').textContent =
+    RAW.views.L2.agents.length;
+  document.getElementById('tabL1NP').textContent =
+    RAW.views.L1_NEWPROJ.agents.length;
 }
 
-// ── TAT string → minutes parser (for median calc) ───────────────────────────
-function parseTatToMins(s) {
-  if (!s || s === "—" || s === "Open") return 0;
-  let mins = 0;
-  let m;
-  m = s.match(/(\d+)d/); if (m) mins += parseInt(m[1]) * 1440;
-  m = s.match(/(\d+)h/); if (m) mins += parseInt(m[1]) * 60;
-  m = s.match(/(\d+)m/); if (m) mins += parseInt(m[1]);
-  return mins;
+function renderKpis(summary) {
+  const s = summary;
+  const html = `
+    <div class="kpi"><div class="label">Feedback calls</div>
+      <div class="value">${s.feedback.toLocaleString()}</div>
+      <div class="sub">Satisfied + Not Satisfied</div></div>
+    <div class="kpi"><div class="label">Satisfied</div>
+      <div class="value" style="color:var(--green)">${s.satisfied.toLocaleString()}</div>
+      <div class="sub">${s.feedback ? ((s.satisfied/s.feedback)*100).toFixed(1)+'% of feedback' : '—'}</div></div>
+    <div class="kpi"><div class="label">PSAT %</div>
+      <div class="value psat">${fmtPct(s.psatPct)}</div>
+      <div class="sub">Satisfied ÷ (Satisfied + Not Satisfied)</div></div>
+    <div class="kpi"><div class="label">Total calls in view</div>
+      <div class="value">${s.total.toLocaleString()}</div>
+      <div class="sub">${s.connected.toLocaleString()} connected · incl. DNP &amp; Call Back</div></div>
+  `;
+  document.getElementById('kpiRow').innerHTML = html;
 }
 
-function fmtTat(mins) {
-  if (mins <= 0) return "—";
-  if (mins < 60) return mins + "m";
-  const h = Math.floor(mins / 60), rm = mins % 60;
-  if (h < 24) return rm ? h + "h " + rm + "m" : h + "h";
-  const d = Math.floor(h / 24), rh = h % 24;
-  return rh ? d + "d " + rh + "h" : d + "d";
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ── Render summary ────────────────────────────────────────────────────────────
-function renderSummary(s) {
-  document.getElementById("s-total").textContent = s.total.toLocaleString();
-  document.getElementById("s-res").textContent   = s.res_pct + "%";
-  document.getElementById("s-res-sub").textContent = s.closed + " / " + s.total;
-  document.getElementById("s-tat").textContent   = fmtTat(s.median_tat_mins);
-  document.getElementById("s-psat").textContent  = s.psat_pct !== null ? s.psat_pct + "%" : "—";
-  document.getElementById("s-psat-n").textContent = s.psat_n.toLocaleString();
-}
-
-// ── Grade config ──────────────────────────────────────────────────────────────
-const GRADES = [
-  { key: "A",   label: "Grade A",   range: "90%+",   bg: "var(--grade-a-bg)", fg: "var(--grade-a-fg)" },
-  { key: "B",   label: "Grade B",   range: "80–89%", bg: "var(--grade-b-bg)", fg: "var(--grade-b-fg)" },
-  { key: "C",   label: "Grade C",   range: "70–79%", bg: "var(--grade-c-bg)", fg: "var(--grade-c-fg)" },
-  { key: "D",   label: "Grade D",   range: "60–69%", bg: "var(--grade-d-bg)", fg: "var(--grade-d-fg)" },
-  { key: "E",   label: "Grade E",   range: "<60%",   bg: "var(--grade-e-bg)", fg: "var(--grade-e-fg)" },
-  { key: "N/A", label: "No PSAT",   range: "No calls yet", bg: "var(--grade-n-bg)", fg: "var(--grade-n-fg)" },
-];
-
-// ── Render helpers ────────────────────────────────────────────────────────────
-function pbarHtml(pct, label) {
-  const cls = pct >= 80 ? "green" : pct >= 60 ? "yellow" : "red";
-  return `<div class="pbar-wrap">
-    <div class="pbar"><div class="pbar-fill ${cls}" style="width:${pct}%"></div></div>
-    <span class="pbar-label">${label}</span>
-  </div>`;
-}
-
-function agentRowsHtml(agents, idPrefix, dateFilter) {
-  return agents.map((ag, i) => {
-    const uid = idPrefix + "-" + i;
-    const psatBar = ag.psat_pct !== null
-      ? pbarHtml(ag.psat_pct, ag.psat_pct + "%")
-      : `<span style="color:var(--muted)">—</span>`;
-
-    // Filter tickets by current date filter
-    const filteredTickets = (ag.tickets || []).filter(t => inDateRange(t.date, dateFilter));
-
-    const ticketRows = filteredTickets.map(t => {
-      // Calling status + PSAT combined
-      let callHtml;
-      const cs = t.calling_status;
-      if (cs === "Connected" || (!cs && t.psat !== null && t.psat !== undefined)) {
-        // Connected call (or legacy data where calling_status wasn't saved yet)
-        callHtml = t.psat === 1
-          ? `<span class="psat-yes">✓ Satisfied</span>`
-          : `<span class="psat-no">✗ Not Satisfied</span>`;
-      } else if (cs) {
-        // DNP 1, DNP 2, DNP 3, etc.
-        callHtml = `<span class="dnp-badge">${esc(cs)}</span>`;
-      } else {
-        callHtml = `<span class="psat-na">No call</span>`;
-      }
-      const link = t.url
-        ? `<a href="${esc(t.url)}" target="_blank" class="kapture-link">Open ↗</a>`
-        : "—";
-      return `<tr>
-        <td><code style="font-size:11px">${esc(t.id)}</code></td>
-        <td>${esc(t.bucket || "—")}</td>
-        <td class="q-text">${esc(t.question || "—")}</td>
-        <td>${callHtml}</td>
-        <td>${esc(t.tat || "—")}</td>
-        <td>${link}</td>
-      </tr>`;
-    }).join("") || `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">No tickets for this date range</td></tr>`;
-
-    return `
-    <tr id="ag-row-${uid}">
-      <td><button class="agent-name-btn" onclick="toggleTickets('${uid}')">${esc(ag.name)}</button></td>
-      <td><strong>${ag.total}</strong></td>
-      <td style="color:var(--yellow)">${ag.open}</td>
-      <td style="color:var(--green)">${ag.closed}</td>
-      <td>${pbarHtml(ag.res_pct, ag.res_pct + "%")}</td>
-      <td>${ag.avg_tat || "—"}</td>
-      <td>${psatBar}</td>
-      <td style="color:var(--muted)">${ag.psat_n || 0}</td>
-      <td><button class="expand-btn" onclick="toggleTickets('${uid}')">Tickets ▾</button></td>
+function renderAgentBody(agent) {
+  if (!agent.tickets.length) return '<div class="empty">No calls in date range.</div>';
+  const stats = `
+    <div class="stats-row">
+      <div>Total in range: <b>${agent.total}</b></div>
+      <div>Connected: <b>${agent.connected}</b></div>
+      <div>Feedback (PSAT denom): <b>${agent.feedback}</b></div>
+      <div>Satisfied: <b style="color:var(--green)">${agent.satisfied}</b></div>
+      <div>Not Satisfied: <b style="color:var(--red)">${agent.notSat}</b></div>
+      <div>Call Back: <b style="color:var(--amber)">${agent.callBack}</b></div>
+      <div>DNP: <b style="color:var(--muted)">${agent.dnp}</b></div>
+    </div>
+  `;
+  const controlsId = 'ctrl-' + agent.name.replace(/[^a-z0-9]+/gi,'_');
+  const rows = agent.tickets.map(t => `
+    <tr data-search="${escapeHtml(`${t.phone} ${t.ticket_id} ${t.category} ${t.bucket} ${t.final_bucket} ${t.question} ${t.sat_status}`).toLowerCase()}"
+        data-sat="${escapeHtml(t.sat_status || '')}">
+      <td class="date">${t.date}</td>
+      <td class="phone">${escapeHtml(t.phone)}</td>
+      <td><span class="badge bucket">${escapeHtml(t.bucket)}</span></td>
+      <td><span class="badge tier">${escapeHtml(t.final_bucket || '—')}</span></td>
+      <td>${escapeHtml(t.category || '—')}</td>
+      <td>${badgeForSat(t.sat_status, t.calling_status)}</td>
+      <td class="question">${escapeHtml((t.question || '').slice(0,200))}${t.question && t.question.length>200?'…':''}</td>
+      <td class="tid">${t.url ? `<a href="${escapeHtml(t.url)}" target="_blank" rel="noopener">${escapeHtml(t.ticket_id)}</a>` : escapeHtml(t.ticket_id)}</td>
     </tr>
-    <tr class="ticket-row" id="ag-tickets-${uid}">
-      <td colspan="9">
-        <div class="ticket-inner">
-          <table class="ticket-table">
-            <thead><tr>
-              <th>Ticket ID</th><th>Issue Bucket</th><th>Question by Partner</th>
-              <th>Call Status / PSAT</th><th>Resolution TAT</th><th>Kapture</th>
-            </tr></thead>
-            <tbody>${ticketRows}</tbody>
-          </table>
-        </div>
-      </td>
-    </tr>`;
-  }).join("");
+  `).join('');
+  return `
+    ${stats}
+    <div class="ticket-controls">
+      <input type="search" placeholder="Search by phone, ticket, question, category…"
+             oninput="filterTickets(this, '${controlsId}')" />
+      <select onchange="filterByStatus(this, '${controlsId}')">
+        <option value="">All outcomes</option>
+        <option value="Satisfied">Satisfied only</option>
+        <option value="Not Satisfied">Not Satisfied only</option>
+        <option value="Call Back">Call Back only</option>
+      </select>
+    </div>
+    <table class="tickets" id="${controlsId}">
+      <thead><tr>
+        <th>Date</th><th>Phone</th><th>Bucket</th><th>Tier</th>
+        <th>Category</th><th>Outcome</th><th>Question</th><th>Ticket</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
-// ── Render grade sections ─────────────────────────────────────────────────────
-function renderAgents(agents, dateFilter) {
-  const container = document.getElementById("gradeSections");
-
-  if (!agents.length) {
-    container.innerHTML = `<div class="no-data">No data for this filter</div>`;
-    return;
-  }
-
-  // Group by grade
-  const byGrade = {};
-  GRADES.forEach(g => byGrade[g.key] = []);
-  agents.forEach(ag => {
-    const key = ag.grade in byGrade ? ag.grade : "N/A";
-    byGrade[key].push(ag);
+function filterTickets(input, tableId) {
+  const q = input.value.toLowerCase();
+  document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr => {
+    tr.style.display = tr.dataset.search.includes(q) ? '' : 'none';
   });
-
-  container.innerHTML = GRADES.map(g => {
-    const list = byGrade[g.key];
-    if (!list.length) return "";
-
-    const agentCount   = list.length;
-    const totalTickets = list.reduce((s, a) => s + a.total, 0);
-    const totalPsatN   = list.reduce((s, a) => s + (a.psat_n || 0), 0);
-    const avgPsat      = g.key !== "N/A"
-      ? (list.reduce((s, a) => s + (a.psat_pct ?? 0), 0) / agentCount).toFixed(1) + "%"
-      : "—";
-
-    return `
-    <div class="grade-section">
-      <div class="grade-section-header" style="background:${g.bg}"
-           onclick="toggleSection('${g.key}')">
-        <div class="left">
-          <div class="grade-label-big" style="background:${g.fg};color:#fff">${g.key === "N/A" ? "?" : g.key}</div>
-          <div>
-            <div class="grade-section-title" style="color:${g.fg}">${g.label}
-              <span style="font-weight:400;font-size:13px;color:${g.fg};opacity:.75"> · ${g.range}</span>
-            </div>
-            <div class="grade-section-meta">
-              ${agentCount} agent${agentCount > 1 ? "s" : ""} &nbsp;·&nbsp;
-              ${totalTickets} tickets &nbsp;·&nbsp;
-              ${totalPsatN} PSAT calls &nbsp;·&nbsp;
-              Avg PSAT: ${avgPsat}
-            </div>
-          </div>
-        </div>
-        <span class="toggle-arrow open" id="arrow-${g.key}">▼</span>
-      </div>
-      <div class="grade-section-body" id="body-${g.key}">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Agent</th><th>Total</th><th>Open</th><th>Closed</th>
-                <th>Resolution</th><th>Avg TAT</th><th>PSAT %</th><th>PSAT Calls</th><th></th>
-              </tr>
-            </thead>
-            <tbody>${agentRowsHtml(list, g.key, dateFilter)}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>`;
-  }).join("");
+}
+function filterByStatus(sel, tableId) {
+  const v = sel.value;
+  document.querySelectorAll(`#${tableId} tbody tr`).forEach(tr => {
+    tr.style.display = (!v || tr.dataset.sat === v) ? '' : 'none';
+  });
 }
 
-function toggleSection(gradeKey) {
-  const body  = document.getElementById("body-" + gradeKey);
-  const arrow = document.getElementById("arrow-" + gradeKey);
-  const collapsed = body.classList.toggle("collapsed");
-  arrow.classList.toggle("open", !collapsed);
+function toggleAgent(name, el) {
+  if (OPEN_AGENTS.has(name)) { OPEN_AGENTS.delete(name); el.classList.remove('open'); el.querySelector('.agent-body').remove(); }
+  else { OPEN_AGENTS.add(name); el.classList.add('open');
+         const body = document.createElement('div');
+         body.className = 'agent-body';
+         const agent = JSON.parse(el.dataset.agent);
+         body.innerHTML = renderAgentBody(agent);
+         el.appendChild(body); }
 }
 
-function toggleTickets(uid) {
-  const row = document.getElementById("ag-tickets-" + uid);
-  const btn = document.querySelector(`#ag-row-${uid} .expand-btn`);
-  if (row.classList.toggle("open")) {
-    btn.textContent = "Tickets ▴";
-  } else {
-    btn.textContent = "Tickets ▾";
+function toggleGrade(g) {
+  if (COLLAPSED_GRADES.has(g)) COLLAPSED_GRADES.delete(g); else COLLAPSED_GRADES.add(g);
+  render();
+}
+
+function renderAgents(agents) {
+  // Bucket by grade
+  const order = ['A','B','C','D','E','N/A'];
+  const bucketed = Object.fromEntries(order.map(g => [g, []]));
+  agents.forEach(a => bucketed[a.grade].push(a));
+
+  let html = '';
+  let rank = 1;
+  for (const g of order) {
+    const list = bucketed[g];
+    if (!list.length) continue;
+    const collapsed = COLLAPSED_GRADES.has(g);
+    const avgPsat = (() => {
+      const valid = list.filter(a => a.psatPct !== null);
+      if (!valid.length) return '—';
+      return (valid.reduce((s,a) => s + a.psatPct, 0) / valid.length).toFixed(1) + '%';
+    })();
+    const gLabel = g === 'N/A' ? 'No feedback in range' : 'Grade ' + g;
+    html += `
+      <div class="grade-section ${collapsed ? 'collapsed' : ''}">
+        <div class="grade-header" onclick="toggleGrade('${g}')">
+          <span class="caret">▼</span>
+          <span class="grade-chip ${g === 'N/A' ? 'N' : g}">${g === 'N/A' ? '—' : g}</span>
+          <span class="grade-meta"><span class="agents-n">${list.length}</span> agent${list.length>1?'s':''} · avg PSAT ${avgPsat} · ${gLabel}</span>
+        </div>
+        <div class="grade-body">
+          ${list.map(a => {
+            const r = rank++;
+            const isOpen = OPEN_AGENTS.has(a.name);
+            const agentJson = escapeHtml(JSON.stringify(a));
+            const bar = a.psatPct !== null
+              ? `<div class="psat-bar-track"><span style="width:${a.psatPct}%"></span></div>` : '';
+            return `
+              <div class="agent ${isOpen ? 'open' : ''}" data-agent="${agentJson}">
+                <div class="agent-head" onclick="toggleAgent('${escapeHtml(a.name)}', this.parentElement)">
+                  <div class="agent-rank">#${r}</div>
+                  <div class="agent-name">${escapeHtml(a.name)}
+                    <span class="meta">${a.total} calls · ${a.connected} connected</span>
+                  </div>
+                  <div class="agent-metric"><div class="num">${a.feedback}</div><span class="lbl">Feedback</span></div>
+                  <div class="agent-metric sat"><div class="num">${a.satisfied}</div><span class="lbl">Sat</span></div>
+                  <div class="agent-metric nsat"><div class="num">${a.notSat}</div><span class="lbl">Not Sat</span></div>
+                  <div class="agent-metric psat">
+                    <div class="num">${fmtPct(a.psatPct)}</div>
+                    ${bar}
+                  </div>
+                  <div class="agent-grade"><span class="grade-chip ${a.grade === 'N/A' ? 'N' : a.grade}">${a.grade === 'N/A' ? '—' : a.grade}</span></div>
+                  <div class="agent-caret">▶</div>
+                </div>
+                ${isOpen ? `<div class="agent-body">${renderAgentBody(a)}</div>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+  if (!html) html = '<div class="empty">No agents had calls in this view + date range.</div>';
+  return html;
+}
+
+function render() {
+  if (!RAW) return;
+  const anchor = MAX_DATE || RAW.date_range.to;
+  const computed = computeView(CURRENT_VIEW, DATE_FILTER, anchor);
+  renderKpis(computed.summary);
+  document.getElementById('content').innerHTML = renderAgents(computed.agents);
+  document.getElementById('footer').textContent =
+    `${computed.agents.length} agents · ${computed.summary.feedback} feedback calls in current filter · ${RAW.views[CURRENT_VIEW].label} view`;
+}
+
+/* ── Load ──────────────────────────────────────────────────────────────────── */
+async function loadData(force = false) {
+  try {
+    const url = 'data/data.json' + (force ? `?t=${Date.now()}` : '');
+    const resp = await fetch(url);
+    RAW = await resp.json();
+    MAX_DATE = RAW.date_range.to || null;
+    renderOverall();
+    render();
+  } catch (e) {
+    document.getElementById('content').innerHTML = `<div class="empty">Failed to load data: ${e}</div>`;
   }
 }
 
-// ── Render open tickets ───────────────────────────────────────────────────────
-function renderOpenTickets(tickets) {
-  const badge = document.getElementById("openCount");
-  const tbody = document.getElementById("openBody");
-  badge.textContent = tickets.length;
-
-  if (!tickets.length) {
-    tbody.innerHTML = `<tr><td colspan="5"><div class="no-data">No open tickets 🎉</div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = tickets.map(t => {
-    const ageClass = t.age_mins > 240 ? "age-warn" : "";
-    return `<tr>
-      <td><code style="font-size:12px">${esc(t.id)}</code></td>
-      <td>${esc(t.agent)}</td>
-      <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis">${esc(t.title || "—")}</td>
-      <td>${esc(t.created)}</td>
-      <td class="${ageClass}">${esc(t.age)}</td>
-    </tr>`;
-  }).join("");
-}
-
-function esc(s) {
-  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-}
-
-// ── Auto-refresh every 15 min ─────────────────────────────────────────────────
 loadData();
-setInterval(() => loadData(), 15 * 60 * 1000);
 </script>
 </body>
 </html>

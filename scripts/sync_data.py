@@ -1,43 +1,38 @@
 """
-Partner Trust Line - Kapture Data Sync
-Runs every 15 minutes via GitHub Actions.
-Reads ticket IDs from Google Sheet, fetches from Kapture API, merges PSAT scores.
+Partner Trust Line — Agent PSAT Dashboard sync
+Source: Google Sheet "Calling Sheet" (gid=0) — one row per PSAT call attempt.
+Joined to Kapture by Ticket ID to recover agent (assignedToName).
+
+Runs every 15 min via GitHub Actions, commits data.json + state.json.
 """
 
-import requests
-import json
-import csv
-import io
-import os
-import re
-import time
+from __future__ import annotations
+import csv, io, json, os, re, time
 from datetime import datetime, timezone
+from typing import Any
+
+import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
-KAPTURE_API_URL = "https://wiomin.kapturecrm.com/search-ticket-by-ticket-id.html/v.2.0"
-KAPTURE_AUTH    = os.environ.get(
-    "KAPTURE_AUTH",
-    "Basic cGgwYmg3eDJhZWljenZ3aHIxdmdwZ20wcmprcDVycms2ZzZvZTJqZG1pM3ZrdDh3N20="
-)
 
-TICKETS_SHEET = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1jJwFZ6nOu-sx3_EN-lk9t_Q4jIqYQoQTaJhRfNwoRsg"
-    "/export?format=csv&gid=427384486"
-)
-PSAT_SHEET = (
-    "https://docs.google.com/spreadsheets/d/"
-    "1GJ3FIOepe3VmqeNinEYHJP-iMKmIM76_obN8znQauwM"
-    "/export?format=csv&gid=64685464"
-)
+SHEET_ID    = "1HB79kOjNIeHJXPlDET4ksE3QiUvPi6MfG6i5RSw-gm4"
+SHEET_GID   = "0"                              # "Calling Sheet" tab
+SHEET_URL   = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}"
+               f"/export?format=csv&gid={SHEET_GID}")
+
+KAPTURE_API_URL = "https://wiomin.kapturecrm.com/search-ticket-by-ticket-id.html/v.2.0"
+KAPTURE_AUTH    = os.environ.get("KAPTURE_AUTH", "")  # required from env / GH secret
 
 DATA_FILE  = "data/data.json"
-STATE_FILE = "data/state.json"   # lightweight ticket store (not served to browser)
+STATE_FILE = "data/state.json"
 
-HEADERS = {
-    "Authorization": KAPTURE_AUTH,
-    "Content-Type":  "application/json",
-}
+L1_BUCKETS         = {"L1"}
+L2_BUCKETS         = {"L2"}
+NEWPROJECT_BUCKETS = {"NewProject", "NEW PROJECT", "New Project"}
+
+CONNECTED_STATUSES = {"Connected"}
+FEEDBACK_OUTCOMES  = {"Satisfied", "Not Satisfied"}   # PSAT denominator
+POSITIVE_OUTCOMES  = {"Satisfied"}                    # PSAT numerator
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,143 +55,29 @@ def save_json(path: str, obj):
         json.dump(obj, f, separators=(",", ":"))
 
 
-def parse_tat_minutes(s: str) -> int:
-    if not s:
-        return 0
-    mins = 0
-    m = re.search(r"(\d+)\s*Day",  s); mins += int(m.group(1)) * 1440 if m else 0
-    m = re.search(r"(\d+)\s*Hr",   s); mins += int(m.group(1)) * 60   if m else 0
-    m = re.search(r"(\d+)\s*Min",  s); mins += int(m.group(1))        if m else 0
-    return mins
+def normalize_bucket(b: str) -> str:
+    """Fold all NewProject variants to a single label; pass L1/L2 through."""
+    b = (b or "").strip()
+    if b in NEWPROJECT_BUCKETS:
+        return "NewProject"
+    return b
 
 
-def fmt_tat(mins: int) -> str:
-    if mins <= 0:
-        return "—"
-    if mins < 60:
-        return f"{mins}m"
-    h, m = divmod(mins, 60)
-    if h < 24:
-        return f"{h}h {m}m" if m else f"{h}h"
-    d, hr = divmod(h, 24)
-    return f"{d}d {hr}h" if hr else f"{d}d"
-
-
-def parse_kapture_date(s: str):
-    """Parse '16-10-2025 12:09' → datetime, return None on fail."""
-    for fmt in ("%d-%m-%Y %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            return datetime.strptime(s.strip(), fmt)
-        except Exception:
-            pass
+def view_for_bucket(bucket: str) -> str | None:
+    """Which dashboard tab this row belongs to."""
+    if bucket in L2_BUCKETS:
+        return "L2"
+    if bucket in L1_BUCKETS or bucket in NEWPROJECT_BUCKETS:
+        return "L1_NEWPROJ"
     return None
 
-# ── Kapture API ───────────────────────────────────────────────────────────────
 
-def fetch_kapture_batch(ticket_ids: list[str]) -> list[dict]:
-    """Try comma-separated batch; fall back to one-by-one."""
-    if not ticket_ids:
-        return []
-
-    payload = {
-        "ticket_ids":               ",".join(ticket_ids),
-        "history_type":             "all",
-        "conversation_type":        "notes",
-        "read_ticket_history_details": "1",
-    }
-    try:
-        resp = requests.post(KAPTURE_API_URL, headers=HEADERS, json=payload, timeout=60)
-        data = resp.json()
-        if isinstance(data, list) and len(data) == len(ticket_ids):
-            return data
-        # API may not support batch — fall through
-    except Exception as e:
-        print(f"  Batch call failed ({e}), retrying individually…")
-
-    results = []
-    for tid in ticket_ids:
-        try:
-            resp = requests.post(
-                KAPTURE_API_URL, headers=HEADERS,
-                json={**payload, "ticket_ids": tid}, timeout=30
-            )
-            data = resp.json()
-            if isinstance(data, list) and data:
-                results.append(data[0])
-        except Exception as e:
-            print(f"  Failed ticket {tid}: {e}")
-        time.sleep(0.2)   # polite rate limit
-    return results
-
-
-def extract_ticket(api_obj: dict) -> dict | None:
-    td = api_obj.get("task_details", {})
-    tid = str(td.get("ticketId", "")).strip()
-    if not tid:
-        return None
-
-    status    = td.get("status", "")
-    substatus = td.get("substatus", "")
-    is_closed = (status == "Complete") or (substatus in ("Completed",))
-
-    created_dt = parse_kapture_date(td.get("date", ""))
-    closed_dt  = parse_kapture_date(td.get("taskEnddate", ""))
-
-    tat_mins = parse_tat_minutes(td.get("tat", ""))
-    if tat_mins == 0 and created_dt and closed_dt:
-        tat_mins = max(0, int((closed_dt - created_dt).total_seconds() / 60))
-
-    # Issue bucket — last 2 segments of disposition path
-    disposition = td.get("disposition", "")
-    parts = [p.strip() for p in disposition.split("|") if p.strip()]
-    bucket = " › ".join(parts[-2:]) if len(parts) >= 2 else (parts[-1] if parts else "")
-
-    # Question by partner — try multiple paths in additional_info
-    ai = api_obj.get("additional_info", {})
-    question = (
-        ai.get("partner_details_add_info", {}).get("question_by_partner", "")
-        or ai.get("ticket_source_info", {}).get("partner_app_ticket_title", "")
-        or td.get("title", "")
-    )
-
-    return {
-        "id":             tid,
-        "agent":          td.get("assignedToName", "Unassigned").strip() or "Unassigned",
-        "status":         status,
-        "substatus":      substatus,
-        "is_closed":      is_closed,
-        "created":        td.get("date", ""),
-        "date":           created_dt.strftime("%Y-%m-%d") if created_dt else "",
-        "closed_at":      td.get("taskEnddate", ""),
-        "tat_mins":       tat_mins,
-        "title":          td.get("title", ""),
-        "disposition":    disposition,
-        "bucket":         bucket,
-        "question":       question[:250].strip(),
-        "url":            td.get("url", ""),
-        "psat":           None,    # filled later
-        "calling_status": None,    # filled later
-        "call_dt":        None,    # filled later
-    }
-
-# ── PSAT ──────────────────────────────────────────────────────────────────────
-
-def normalize_date(s: str) -> str:
-    """Normalize various date formats to YYYY-MM-DD."""
-    s = s.strip()
+def parse_date_ddmmyyyy(s: str) -> str:
+    """Normalize DD/MM/YYYY → ISO YYYY-MM-DD. Tolerate a couple of fallbacks."""
+    s = (s or "").strip()
     if not s:
         return ""
-    # Already ISO: 2026-02-17 or 2026-02-17 12:00:00
-    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
-        return s[:10]
-    # US format: M/D/YYYY or MM/DD/YYYY
-    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%d/%m/%y"):
-        try:
-            return datetime.strptime(s.split()[0], fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-    # DD-MM-YYYY
-    for fmt in ("%d-%m-%Y", "%d-%m-%y"):
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
         try:
             return datetime.strptime(s.split()[0], fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -204,241 +85,287 @@ def normalize_date(s: str) -> str:
     return s[:10]
 
 
-def load_psat() -> dict[str, dict]:
-    """Returns {ticket_id: {psat, calling_status, call_dt}} for ALL called rows."""
-    rows = fetch_csv(PSAT_SHEET)
-    out = {}
-    for row in rows:
-        calling_status = row.get("Calling Status", "").strip()
-        if not calling_status:
+def grade(psat_pct: float | None) -> str:
+    if psat_pct is None:
+        return "N/A"
+    if psat_pct >= 90: return "A"
+    if psat_pct >= 80: return "B"
+    if psat_pct >= 70: return "C"
+    if psat_pct >= 60: return "D"
+    return "E"
+
+# ── Calling Sheet → call rows ─────────────────────────────────────────────────
+
+def read_calling_sheet() -> list[dict]:
+    rows = fetch_csv(SHEET_URL)
+    out = []
+    for r in rows:
+        date_iso = parse_date_ddmmyyyy(r.get("Date", ""))
+        if not date_iso:
             continue
-        tid = row.get("ticket_id", "").strip() or row.get("ptl_ticket_id", "").strip()
-        if not tid:
+        bucket = normalize_bucket(r.get("Bucket", ""))
+        if not bucket:
             continue
-        connected = row.get("Connected", "").strip() == "1"
-        psat = None
-        if connected:
-            try:
-                psat = int(row.get("PSAT", "0").strip())
-            except ValueError:
-                psat = 0
-        # call_dt is the date the PSAT call was made — normalize to YYYY-MM-DD
-        call_dt = normalize_date(row.get("call_dt", ""))
-        out[tid] = {"psat": psat, "calling_status": calling_status, "call_dt": call_dt}
+        view = view_for_bucket(bucket)
+        if view is None:
+            continue
+        ticket_id = (r.get("Ticket ID") or "").strip()
+        if not ticket_id:
+            continue
+
+        calling_status = (r.get("Calling Status") or "").strip()
+        sat_status     = (r.get("Satisfaction Status") or "").strip()
+
+        is_connected   = calling_status in CONNECTED_STATUSES
+        is_feedback    = is_connected and sat_status in FEEDBACK_OUTCOMES
+        is_satisfied   = is_feedback and sat_status in POSITIVE_OUTCOMES
+
+        out.append({
+            "date":           date_iso,
+            "category":       (r.get("Category") or "").strip(),
+            "sub_category":   (r.get("Sub Category") or "").strip(),
+            "phone":          (r.get("Phone") or "").strip(),
+            "question":       (r.get("Question by Partner") or "").strip()[:500],
+            "final_bucket":   (r.get("Final Bucket") or "").strip(),
+            "bucket":         bucket,
+            "view":           view,
+            "ticket_id":      ticket_id,
+            "calling_status": calling_status,
+            "sat_status":     sat_status,
+            "is_connected":   is_connected,
+            "is_feedback":    is_feedback,
+            "is_satisfied":   is_satisfied,
+            "remarks":        (r.get("REMARKS") or "").strip()[:300],
+        })
     return out
+
+# ── Kapture (agent + URL) ─────────────────────────────────────────────────────
+
+def fetch_kapture_agents(ticket_ids: list[str]) -> dict[str, dict]:
+    """Returns {ticket_id: {agent, url}}. Best-effort, never raises."""
+    if not ticket_ids or not KAPTURE_AUTH:
+        return {}
+
+    headers = {"Authorization": KAPTURE_AUTH, "Content-Type": "application/json"}
+    payload_base = {
+        "history_type":                "all",
+        "conversation_type":           "notes",
+        "read_ticket_history_details": "1",
+    }
+    out: dict[str, dict] = {}
+
+    # Try batch first; fall back to per-ticket on any failure.
+    BATCH = 50
+    for i in range(0, len(ticket_ids), BATCH):
+        chunk = ticket_ids[i:i + BATCH]
+        try:
+            resp = requests.post(
+                KAPTURE_API_URL, headers=headers, timeout=60,
+                json={**payload_base, "ticket_ids": ",".join(chunk)},
+            )
+            data = resp.json()
+            if isinstance(data, list) and len(data) == len(chunk):
+                for obj in data:
+                    rec = _extract_kapture(obj)
+                    if rec:
+                        out[rec["ticket_id"]] = {"agent": rec["agent"], "url": rec["url"]}
+                continue   # batch worked, move on
+        except Exception as e:
+            print(f"  Kapture batch failed: {e}")
+
+        for tid in chunk:
+            try:
+                resp = requests.post(
+                    KAPTURE_API_URL, headers=headers, timeout=30,
+                    json={**payload_base, "ticket_ids": tid},
+                )
+                data = resp.json()
+                if isinstance(data, list) and data:
+                    rec = _extract_kapture(data[0])
+                    if rec:
+                        out[rec["ticket_id"]] = {"agent": rec["agent"], "url": rec["url"]}
+            except Exception as e:
+                print(f"    Failed ticket {tid}: {e}")
+            time.sleep(0.15)
+
+    return out
+
+
+def _extract_kapture(api_obj: dict) -> dict | None:
+    td = api_obj.get("task_details", {})
+    tid = str(td.get("ticketId", "")).strip()
+    if not tid:
+        return None
+    return {
+        "ticket_id": tid,
+        "agent":     (td.get("assignedToName") or "Unassigned").strip() or "Unassigned",
+        "url":       td.get("url", ""),
+    }
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
 
-def aggregate(tickets: dict[str, dict]) -> tuple[dict, list, list]:
-    """Returns (summary, agents_list, open_tickets_list)."""
-    agent_acc: dict[str, dict] = {}
+def aggregate(call_rows: list[dict], view: str) -> list[dict]:
+    """One agent leaderboard for a given view (L2 or L1_NEWPROJ)."""
+    rows = [r for r in call_rows if r["view"] == view]
 
-    for tid, t in tickets.items():
-        agent = t.get("agent", "Unassigned")
-        if agent not in agent_acc:
-            agent_acc[agent] = {
-                "total": 0, "open": 0, "closed": 0,
-                "tat_sum": 0, "tat_n": 0,
-                "psat_sum": 0, "psat_n": 0,
-                "daily": {},
-                "ticket_list": [],
-            }
-        a = agent_acc[agent]
-        a["total"] += 1
+    by_agent: dict[str, dict] = {}
+    for r in rows:
+        agent = r.get("agent") or "Unassigned"
+        a = by_agent.setdefault(agent, {
+            "name":         agent,
+            "total":        0,    # all call rows for this agent in view
+            "connected":    0,
+            "feedback":     0,    # PSAT denominator
+            "satisfied":    0,    # PSAT numerator
+            "not_sat":      0,
+            "call_back":    0,
+            "dnp":          0,
+            "uncalled":     0,
+            "daily":        {},   # date → {feedback, satisfied}
+            "tickets":      [],
+        })
+        a["total"]     += 1
+        if r["is_connected"]: a["connected"] += 1
+        if r["is_feedback"]:  a["feedback"]  += 1
+        if r["is_satisfied"]: a["satisfied"] += 1
+        if r["sat_status"] == "Not Satisfied": a["not_sat"]   += 1
+        if r["sat_status"] == "Call Back":     a["call_back"] += 1
+        if r["calling_status"].startswith("DNP"): a["dnp"]      += 1
+        if not r["calling_status"]:               a["uncalled"] += 1
 
-        if t.get("is_closed"):
-            a["closed"] += 1
-            tat = t.get("tat_mins", 0)
-            if tat > 0:
-                a["tat_sum"] += tat
-                a["tat_n"]   += 1
-        else:
-            a["open"] += 1
-
-        psat = t.get("psat")
-        if psat is not None:
-            a["psat_sum"] += psat
-            a["psat_n"]   += 1
-
-        d = t.get("date", "")
+        d = r["date"]
         if d:
-            if d not in a["daily"]:
-                a["daily"][d] = {"total": 0, "closed": 0, "tat_sum": 0, "tat_n": 0}
-            a["daily"][d]["total"] += 1
-            if t.get("is_closed"):
-                a["daily"][d]["closed"] += 1
-                tat = t.get("tat_mins", 0)
-                if tat > 0:
-                    a["daily"][d]["tat_sum"] += tat
-                    a["daily"][d]["tat_n"]   += 1
+            day = a["daily"].setdefault(d, {"feedback": 0, "satisfied": 0})
+            if r["is_feedback"]:  day["feedback"]  += 1
+            if r["is_satisfied"]: day["satisfied"] += 1
 
-        # Per-ticket display record
-        a["ticket_list"].append({
-            "id":             tid,
-            "date":           d,
-            "call_dt":        t.get("call_dt", ""),
-            "bucket":         t.get("bucket", ""),
-            "question":       t.get("question", ""),
-            "psat":           t.get("psat"),
-            "calling_status": t.get("calling_status"),
-            "tat":            fmt_tat(t.get("tat_mins", 0)) if t.get("is_closed") else "Open",
-            "url":            t.get("url", ""),
-            "closed":         t.get("is_closed", False),
+        a["tickets"].append({
+            "date":           r["date"],
+            "phone":          r["phone"],
+            "bucket":         r["bucket"],
+            "final_bucket":   r["final_bucket"],
+            "category":       r["category"],
+            "sub_category":   r["sub_category"],
+            "question":       r["question"],
+            "ticket_id":      r["ticket_id"],
+            "url":            r.get("url", ""),
+            "calling_status": r["calling_status"],
+            "sat_status":     r["sat_status"],
+            "remarks":        r["remarks"],
         })
 
     agents = []
-    for name, a in agent_acc.items():
-        res_pct   = round(a["closed"] / a["total"] * 100, 1) if a["total"] else 0
-        avg_tat   = round(a["tat_sum"] / a["tat_n"]) if a["tat_n"] else 0
-        psat_pct  = round(a["psat_sum"] / a["psat_n"] * 100, 1) if a["psat_n"] else None
-
-        if psat_pct is None:
-            grade = "N/A"
-        elif psat_pct >= 90: grade = "A"
-        elif psat_pct >= 80: grade = "B"
-        elif psat_pct >= 70: grade = "C"
-        elif psat_pct >= 60: grade = "D"
-        else:                grade = "E"
-
-        # Build daily list sorted descending
-        daily_list = []
-        for day in sorted(a["daily"].keys(), reverse=True)[:60]:  # last 60 days
-            dd = a["daily"][day]
-            day_tat = round(dd["tat_sum"] / dd["tat_n"]) if dd["tat_n"] else 0
-            daily_list.append({
-                "date":    day,
-                "total":   dd["total"],
-                "closed":  dd["closed"],
-                "res_pct": round(dd["closed"] / dd["total"] * 100, 1) if dd["total"] else 0,
-                "avg_tat": fmt_tat(day_tat),
-            })
-
-        # Tickets sorted newest first
-        ticket_list = sorted(a["ticket_list"], key=lambda x: x["date"], reverse=True)
-
+    for name, a in by_agent.items():
+        psat_pct = round(a["satisfied"] / a["feedback"] * 100, 1) if a["feedback"] else None
+        daily = [
+            {"date": d, "feedback": v["feedback"], "satisfied": v["satisfied"],
+             "psat_pct": round(v["satisfied"] / v["feedback"] * 100, 1) if v["feedback"] else None}
+            for d, v in sorted(a["daily"].items())
+        ]
+        tickets = sorted(a["tickets"], key=lambda x: x["date"], reverse=True)
         agents.append({
-            "name":         name,
-            "total":        a["total"],
-            "open":         a["open"],
-            "closed":       a["closed"],
-            "res_pct":      res_pct,
-            "avg_tat_mins": avg_tat,
-            "avg_tat":      fmt_tat(avg_tat),
-            "psat_pct":     psat_pct,
-            "psat_n":       a["psat_n"],
-            "tickets":      ticket_list,
-            "grade":        grade,
-            "daily":        daily_list,
+            "name":      name,
+            "total":     a["total"],
+            "connected": a["connected"],
+            "feedback":  a["feedback"],
+            "satisfied": a["satisfied"],
+            "not_sat":   a["not_sat"],
+            "call_back": a["call_back"],
+            "dnp":       a["dnp"],
+            "uncalled":  a["uncalled"],
+            "psat_pct":  psat_pct,
+            "grade":     grade(psat_pct),
+            "daily":     daily,
+            "tickets":   tickets,
         })
 
-    agents.sort(key=lambda x: x["total"], reverse=True)
+    # Sort: graded first (A→E by PSAT% desc), then unranked (None) by volume.
+    grade_order = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "N/A": 5}
+    agents.sort(key=lambda x: (
+        grade_order[x["grade"]],
+        -(x["psat_pct"] if x["psat_pct"] is not None else -1),
+        -x["feedback"],
+    ))
+    return agents
 
-    # Summary
-    total  = len(tickets)
-    closed = sum(1 for t in tickets.values() if t.get("is_closed"))
-    open_c = total - closed
-    tat_vals = [t["tat_mins"] for t in tickets.values()
-                if t.get("is_closed") and t.get("tat_mins", 0) > 0]
-    avg_tat = round(sum(tat_vals) / len(tat_vals)) if tat_vals else 0
 
-    summary = {
-        "total":    total,
-        "open":     open_c,
-        "closed":   closed,
-        "res_pct":  round(closed / total * 100, 1) if total else 0,
-        "avg_tat":  fmt_tat(avg_tat),
+def overall_summary(call_rows: list[dict]) -> dict:
+    feedback  = sum(1 for r in call_rows if r["is_feedback"])
+    satisfied = sum(1 for r in call_rows if r["is_satisfied"])
+    connected = sum(1 for r in call_rows if r["is_connected"])
+    return {
+        "total_rows": len(call_rows),
+        "connected":  connected,
+        "feedback":   feedback,
+        "satisfied":  satisfied,
+        "psat_pct":   round(satisfied / feedback * 100, 1) if feedback else None,
     }
-
-    # Open tickets detail
-    now = datetime.utcnow()
-    open_tickets = []
-    for tid, t in tickets.items():
-        if t.get("is_closed"):
-            continue
-        created_dt = parse_kapture_date(t.get("created", ""))
-        age_mins = int((now - created_dt).total_seconds() / 60) if created_dt else 0
-        open_tickets.append({
-            "id":      tid,
-            "agent":   t.get("agent", ""),
-            "title":   t.get("title", ""),
-            "created": t.get("created", ""),
-            "date":    t.get("date", ""),
-            "age":     fmt_tat(age_mins),
-            "age_mins": age_mins,
-        })
-    open_tickets.sort(key=lambda x: x["age_mins"], reverse=True)
-
-    return summary, agents, open_tickets
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    print("=== Partner Trust Line Sync ===")
+    print("=== Partner Trust Line — Agent PSAT sync ===")
 
-    # Load state (all processed ticket data)
-    state = load_json(STATE_FILE, {"tickets": {}})
-    tickets: dict[str, dict] = state.get("tickets", {})
-    print(f"State: {len(tickets)} tickets loaded")
+    state = load_json(STATE_FILE, {"agents": {}})
+    agent_cache: dict[str, dict] = state.get("agents", {})  # ticket_id → {agent, url}
+    print(f"State: {len(agent_cache)} cached ticket→agent mappings")
 
-    # Fetch all ticket IDs from Google Sheet
-    print("Fetching ticket IDs from sheet…")
-    sheet_rows = fetch_csv(TICKETS_SHEET)
-    all_ids = set()
-    for row in sheet_rows:
-        tid = row.get("ticket_ids", "").strip()
-        if tid and tid.isdigit():
-            all_ids.add(tid)
-    print(f"Sheet has {len(all_ids)} ticket IDs")
+    print("Fetching Calling Sheet…")
+    call_rows = read_calling_sheet()
+    print(f"  → {len(call_rows)} usable PSAT rows")
 
-    # Decide what to fetch: new + still-open + any missing new fields (one-time backfill)
-    new_ids      = all_ids - set(tickets.keys())
-    open_ids     = {tid for tid, t in tickets.items() if not t.get("is_closed")}
-    backfill_ids = {tid for tid, t in tickets.items()
-                    if "url" not in t or "calling_status" not in t}  # missing new fields
-    to_fetch     = list(new_ids | open_ids | backfill_ids)
-    print(f"To fetch: {len(to_fetch)} ({len(new_ids)} new, {len(open_ids)} open, {len(backfill_ids)} backfill)")
+    unique_ticket_ids = sorted({r["ticket_id"] for r in call_rows})
+    to_fetch = [tid for tid in unique_ticket_ids if tid not in agent_cache]
+    print(f"  Unique tickets: {len(unique_ticket_ids)} · new to fetch: {len(to_fetch)}")
 
-    # Batch fetch from Kapture (50 per batch)
-    BATCH = 50
-    fetched = 0
-    for i in range(0, len(to_fetch), BATCH):
-        batch = to_fetch[i : i + BATCH]
-        print(f"  Batch {i//BATCH + 1}/{(len(to_fetch)-1)//BATCH + 1} ({len(batch)} tickets)…")
-        results = fetch_kapture_batch(batch)
-        for obj in results:
-            t = extract_ticket(obj)
-            if t:
-                tickets[t["id"]] = t
-                fetched += 1
-    print(f"Fetched {fetched} tickets from Kapture")
+    if to_fetch:
+        fetched = fetch_kapture_agents(to_fetch)
+        agent_cache.update(fetched)
+        print(f"  Resolved {len(fetched)} agents from Kapture")
 
-    # Load PSAT and apply
-    print("Loading PSAT…")
-    psat_map = load_psat()
-    for tid in tickets:
-        if tid in psat_map:
-            tickets[tid]["psat"]           = psat_map[tid]["psat"]
-            tickets[tid]["calling_status"] = psat_map[tid]["calling_status"]
-            tickets[tid]["call_dt"]        = psat_map[tid]["call_dt"]
-    print(f"PSAT matched {len(psat_map)} tickets")
+    # Attach agent + url to each call row.
+    for r in call_rows:
+        rec = agent_cache.get(r["ticket_id"], {})
+        r["agent"] = rec.get("agent") or "Unassigned"
+        r["url"]   = rec.get("url", "")
 
-    # Aggregate
-    summary, agents, open_tickets = aggregate(tickets)
+    # Save state.
+    save_json(STATE_FILE, {"agents": agent_cache})
 
-    # Save state (compact, not served to browser directly)
-    save_json(STATE_FILE, {"tickets": tickets})
+    # Aggregate per view.
+    l2_agents          = aggregate(call_rows, "L2")
+    l1_newproj_agents  = aggregate(call_rows, "L1_NEWPROJ")
 
-    # Save data.json (served to browser)
+    # Per-view summaries.
+    l2_summary         = overall_summary([r for r in call_rows if r["view"] == "L2"])
+    l1_newproj_summary = overall_summary([r for r in call_rows if r["view"] == "L1_NEWPROJ"])
+    overall            = overall_summary(call_rows)
+
+    # Date range for the hero strip.
+    dates = sorted({r["date"] for r in call_rows if r["date"]})
+    date_range = {"from": dates[0] if dates else "", "to": dates[-1] if dates else ""}
+
     data = {
-        "last_updated": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "summary":      summary,
-        "agents":       agents,
-        "open_tickets": open_tickets,
+        "last_updated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "date_range":   date_range,
+        "overall":      overall,
+        "views": {
+            "L2": {
+                "label":   "L2",
+                "summary": l2_summary,
+                "agents":  l2_agents,
+            },
+            "L1_NEWPROJ": {
+                "label":   "L1 + NewProject",
+                "summary": l1_newproj_summary,
+                "agents":  l1_newproj_agents,
+            },
+        },
     }
     save_json(DATA_FILE, data)
 
-    print(f"Done. {summary['total']} tickets | {summary['open']} open | "
-          f"{summary['closed']} closed | {len(agents)} agents")
+    print(f"Done. {overall['feedback']} feedback calls · PSAT {overall['psat_pct']}% · "
+          f"L2 agents={len(l2_agents)} · L1+NewProj agents={len(l1_newproj_agents)}")
 
 
 if __name__ == "__main__":
