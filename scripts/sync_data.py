@@ -65,11 +65,16 @@ def normalize_bucket(b: str) -> str:
 
 def view_for_bucket(bucket: str) -> str | None:
     """Which dashboard tab this row belongs to."""
-    if bucket in L2_BUCKETS:
-        return "L2"
-    if bucket in L1_BUCKETS or bucket in NEWPROJECT_BUCKETS:
-        return "L1_NEWPROJ"
+    if bucket in L2_BUCKETS:         return "L2"
+    if bucket in NEWPROJECT_BUCKETS: return "NEWPROJECT"
+    if bucket in L1_BUCKETS:         return "L1"
     return None
+
+
+def clean_name(s: str) -> str:
+    """Collapse internal whitespace and strip — Kapture sometimes returns
+    'Irshad Ahmad ' or 'Mohammad Waris  PX' which would split the leaderboard."""
+    return " ".join((s or "").split())
 
 
 def parse_date_ddmmyyyy(s: str) -> str:
@@ -142,7 +147,7 @@ def read_calling_sheet() -> list[dict]:
 # ── Kapture (agent + URL) ─────────────────────────────────────────────────────
 
 def fetch_kapture_agents(ticket_ids: list[str]) -> dict[str, dict]:
-    """Returns {ticket_id: {agent, url}}. Best-effort, never raises."""
+    """Returns {ticket_id: {assigned, creator, url}}. Best-effort, never raises."""
     if not ticket_ids or not KAPTURE_AUTH:
         return {}
 
@@ -168,7 +173,11 @@ def fetch_kapture_agents(ticket_ids: list[str]) -> dict[str, dict]:
                 for obj in data:
                     rec = _extract_kapture(obj)
                     if rec:
-                        out[rec["ticket_id"]] = {"agent": rec["agent"], "url": rec["url"]}
+                        out[rec["ticket_id"]] = {
+                            "assigned": rec["assigned"],
+                            "creator":  rec["creator"],
+                            "url":      rec["url"],
+                        }
                 continue   # batch worked, move on
         except Exception as e:
             print(f"  Kapture batch failed: {e}")
@@ -183,7 +192,11 @@ def fetch_kapture_agents(ticket_ids: list[str]) -> dict[str, dict]:
                 if isinstance(data, list) and data:
                     rec = _extract_kapture(data[0])
                     if rec:
-                        out[rec["ticket_id"]] = {"agent": rec["agent"], "url": rec["url"]}
+                        out[rec["ticket_id"]] = {
+                            "assigned": rec["assigned"],
+                            "creator":  rec["creator"],
+                            "url":      rec["url"],
+                        }
             except Exception as e:
                 print(f"    Failed ticket {tid}: {e}")
             time.sleep(0.15)
@@ -196,16 +209,27 @@ def _extract_kapture(api_obj: dict) -> dict | None:
     tid = str(td.get("ticketId", "")).strip()
     if not tid:
         return None
+    creator = clean_name(td.get("creatorName"))
+    # IVR-auto-created ROC tickets often have blank creatorName/assignedToName,
+    # but history.disposed[0].disposed_by_name records the agent who handled the call.
+    if not creator:
+        disposed = api_obj.get("history", {}).get("disposed", []) or []
+        for d in disposed:
+            name = clean_name(d.get("disposed_by_name"))
+            if name and name != "System":
+                creator = name
+                break
     return {
         "ticket_id": tid,
-        "agent":     (td.get("assignedToName") or "Unassigned").strip() or "Unassigned",
+        "assigned":  clean_name(td.get("assignedToName")),
+        "creator":   creator,
         "url":       td.get("url", ""),
     }
 
 # ── Aggregation ───────────────────────────────────────────────────────────────
 
 def aggregate(call_rows: list[dict], view: str) -> list[dict]:
-    """One agent leaderboard for a given view (L2 or L1_NEWPROJ)."""
+    """One agent leaderboard for a given view (L2, L1, or NEWPROJECT)."""
     rows = [r for r in call_rows if r["view"] == view]
 
     by_agent: dict[str, dict] = {}
@@ -307,7 +331,15 @@ def main():
     print("=== Partner Trust Line — Agent PSAT sync ===")
 
     state = load_json(STATE_FILE, {"agents": {}})
-    agent_cache: dict[str, dict] = state.get("agents", {})  # ticket_id → {agent, url}
+    agent_cache: dict[str, dict] = state.get("agents", {})  # tid → {assigned, creator, url}
+
+    # One-time migration: the old cache shape was {agent, url}. If we still have
+    # entries in that shape, drop the cache so every ticket gets refetched with
+    # both assignedToName and creatorName populated.
+    if agent_cache and "creator" not in next(iter(agent_cache.values()), {}):
+        print("Cache schema is old (no 'creator' key) — invalidating to refetch.")
+        agent_cache = {}
+
     print(f"State: {len(agent_cache)} cached ticket→agent mappings")
 
     print("Fetching Calling Sheet…")
@@ -324,22 +356,29 @@ def main():
         print(f"  Resolved {len(fetched)} agents from Kapture")
 
     # Attach agent + url to each call row.
+    # L1 is "Resolved on Call" by the inbound caller — credit creatorName.
+    # L2 and NewProject are multi-touch workflows — credit assignedToName.
     for r in call_rows:
         rec = agent_cache.get(r["ticket_id"], {})
-        r["agent"] = rec.get("agent") or "Unassigned"
-        r["url"]   = rec.get("url", "")
+        if r["view"] == "L1":
+            r["agent"] = rec.get("creator") or rec.get("assigned") or "Unassigned"
+        else:
+            r["agent"] = rec.get("assigned") or "Unassigned"
+        r["url"] = rec.get("url", "")
 
     # Save state.
     save_json(STATE_FILE, {"agents": agent_cache})
 
     # Aggregate per view.
-    l2_agents          = aggregate(call_rows, "L2")
-    l1_newproj_agents  = aggregate(call_rows, "L1_NEWPROJ")
+    l2_agents = aggregate(call_rows, "L2")
+    l1_agents = aggregate(call_rows, "L1")
+    np_agents = aggregate(call_rows, "NEWPROJECT")
 
     # Per-view summaries.
-    l2_summary         = overall_summary([r for r in call_rows if r["view"] == "L2"])
-    l1_newproj_summary = overall_summary([r for r in call_rows if r["view"] == "L1_NEWPROJ"])
-    overall            = overall_summary(call_rows)
+    l2_summary = overall_summary([r for r in call_rows if r["view"] == "L2"])
+    l1_summary = overall_summary([r for r in call_rows if r["view"] == "L1"])
+    np_summary = overall_summary([r for r in call_rows if r["view"] == "NEWPROJECT"])
+    overall    = overall_summary(call_rows)
 
     # Date range for the hero strip.
     dates = sorted({r["date"] for r in call_rows if r["date"]})
@@ -350,22 +389,16 @@ def main():
         "date_range":   date_range,
         "overall":      overall,
         "views": {
-            "L2": {
-                "label":   "L2",
-                "summary": l2_summary,
-                "agents":  l2_agents,
-            },
-            "L1_NEWPROJ": {
-                "label":   "L1 + NewProject",
-                "summary": l1_newproj_summary,
-                "agents":  l1_newproj_agents,
-            },
+            "L2":         {"label": "L2",          "summary": l2_summary, "agents": l2_agents},
+            "L1":         {"label": "L1",          "summary": l1_summary, "agents": l1_agents},
+            "NEWPROJECT": {"label": "New Project", "summary": np_summary, "agents": np_agents},
         },
     }
     save_json(DATA_FILE, data)
 
     print(f"Done. {overall['feedback']} feedback calls · PSAT {overall['psat_pct']}% · "
-          f"L2 agents={len(l2_agents)} · L1+NewProj agents={len(l1_newproj_agents)}")
+          f"L2 agents={len(l2_agents)} · L1 agents={len(l1_agents)} · "
+          f"NewProject agents={len(np_agents)}")
 
 
 if __name__ == "__main__":

@@ -292,7 +292,8 @@
 
   <div class="tabs">
     <div class="tab active" data-view="L2" onclick="setView('L2')">L2 <span class="count" id="tabL2">—</span></div>
-    <div class="tab" data-view="L1_NEWPROJ" onclick="setView('L1_NEWPROJ')">L1 + NewProject <span class="count" id="tabL1NP">—</span></div>
+    <div class="tab" data-view="L1" onclick="setView('L1')">L1 <span class="count" id="tabL1">—</span></div>
+    <div class="tab" data-view="NEWPROJECT" onclick="setView('NEWPROJECT')">New Project <span class="count" id="tabNP">—</span></div>
   </div>
 
   <div class="filter-row">
@@ -450,10 +451,9 @@ function renderOverall() {
   document.getElementById('dataRange').textContent =
     `Data range: ${RAW.date_range.from} → ${RAW.date_range.to}`;
   document.getElementById('lastUpdated').textContent = `Updated ${RAW.last_updated}`;
-  document.getElementById('tabL2').textContent =
-    RAW.views.L2.agents.length;
-  document.getElementById('tabL1NP').textContent =
-    RAW.views.L1_NEWPROJ.agents.length;
+  document.getElementById('tabL2').textContent = RAW.views.L2.agents.length;
+  document.getElementById('tabL1').textContent = RAW.views.L1.agents.length;
+  document.getElementById('tabNP').textContent = RAW.views.NEWPROJECT.agents.length;
 }
 
 function renderKpis(summary) {
