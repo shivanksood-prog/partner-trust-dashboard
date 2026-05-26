@@ -303,9 +303,11 @@
     <button class="qbtn" data-v="yesterday" onclick="setQuick('yesterday')">Yesterday</button>
     <button class="qbtn active" data-v="7d" onclick="setQuick('7d')">Last 7 days</button>
     <button class="qbtn" data-v="30d" onclick="setQuick('30d')">Last 30 days</button>
-    <span style="margin-left: 12px;"></span>
-    <input type="date" id="exactDate" onchange="setExactDate(this.value)" />
-    <button id="clearDate" class="clear" style="display:none" onclick="clearExactDate()">Clear</button>
+    <span class="filter-label" style="margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border);">Custom range</span>
+    <input type="date" id="startDate" aria-label="Start date" onchange="setRange()" />
+    <span style="color: var(--muted); font-size: 12px;">to</span>
+    <input type="date" id="endDate" aria-label="End date" onchange="setRange()" />
+    <button id="clearDate" class="clear" style="display:none" onclick="clearRange()">Clear</button>
   </div>
 
   <div class="kpi-row" id="kpiRow"></div>
@@ -318,7 +320,9 @@
 <script>
 let RAW = null;
 let CURRENT_VIEW = 'L2';
-let DATE_FILTER = '7d';  // 'all'|'today'|'yesterday'|'7d'|'30d'|'YYYY-MM-DD'
+let DATE_FILTER = '7d';  // 'all'|'today'|'yesterday'|'7d'|'30d'|'range'
+let RANGE_FROM = null;   // YYYY-MM-DD or null (used when DATE_FILTER === 'range')
+let RANGE_TO   = null;   // YYYY-MM-DD or null (used when DATE_FILTER === 'range')
 let MAX_DATE = null;     // latest date observed in data — used as "today" anchor
 
 const COLLAPSED_GRADES = new Set();    // grade keys that are collapsed
@@ -338,8 +342,13 @@ function inRange(dateStr, filter, anchor) {
   if (filter === 'yesterday') return dateStr === daysAgo(anchor, 1);
   if (filter === '7d')        return dateStr >= daysAgo(anchor, 6)  && dateStr <= anchor;
   if (filter === '30d')       return dateStr >= daysAgo(anchor, 29) && dateStr <= anchor;
-  // exact date (YYYY-MM-DD)
-  return dateStr === filter;
+  if (filter === 'range') {
+    if (!RANGE_FROM && !RANGE_TO) return false;
+    if (RANGE_FROM && dateStr < RANGE_FROM) return false;
+    if (RANGE_TO   && dateStr > RANGE_TO)   return false;
+    return true;
+  }
+  return false;
 }
 
 /* ── Aggregation (client-side, from tickets array) ─────────────────────────── */
@@ -412,22 +421,39 @@ function setView(v) {
 }
 function setQuick(val) {
   DATE_FILTER = val;
+  RANGE_FROM = null;
+  RANGE_TO   = null;
   document.querySelectorAll('.qbtn').forEach(b => {
     b.classList.toggle('active', b.dataset.v === val);
   });
-  document.getElementById('exactDate').value = '';
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
   document.getElementById('clearDate').style.display = 'none';
   render();
 }
-function setExactDate(val) {
-  if (!val) return;
-  DATE_FILTER = val;
+function setRange() {
+  const startEl = document.getElementById('startDate');
+  const endEl   = document.getElementById('endDate');
+  let s = startEl.value || null;
+  let e = endEl.value   || null;
+  if (!s && !e) { clearRange(); return; }
+  if (s && e && s > e) {            // swap if user picked them backwards
+    [s, e] = [e, s];
+    startEl.value = s;
+    endEl.value   = e;
+  }
+  DATE_FILTER = 'range';
+  RANGE_FROM  = s;
+  RANGE_TO    = e;
   document.querySelectorAll('.qbtn').forEach(b => b.classList.remove('active'));
   document.getElementById('clearDate').style.display = '';
   render();
 }
-function clearExactDate() {
-  document.getElementById('exactDate').value = '';
+function clearRange() {
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value   = '';
+  RANGE_FROM = null;
+  RANGE_TO   = null;
   setQuick('7d');
 }
 
@@ -454,6 +480,14 @@ function renderOverall() {
   document.getElementById('tabL2').textContent = RAW.views.L2.agents.length;
   document.getElementById('tabL1').textContent = RAW.views.L1.agents.length;
   document.getElementById('tabNP').textContent = RAW.views.NEWPROJECT.agents.length;
+  // Bound the custom-range pickers to what the data actually contains
+  if (RAW.date_range && RAW.date_range.from && RAW.date_range.to) {
+    for (const id of ['startDate', 'endDate']) {
+      const el = document.getElementById(id);
+      el.min = RAW.date_range.from;
+      el.max = RAW.date_range.to;
+    }
+  }
 }
 
 function renderKpis(summary) {
