@@ -664,8 +664,11 @@ function render() {
 /* ── Load ──────────────────────────────────────────────────────────────────── */
 async function loadData(force = false) {
   try {
-    const url = 'data/data.json' + (force ? `?t=${Date.now()}` : '');
-    const resp = await fetch(url);
+    // Always cache-bust: GitHub Pages caches data.json, so without this a
+    // returning visitor sees a stale (e.g. weeks-old) file and the whole
+    // dashboard anchors its date filters to that stale MAX_DATE.
+    const url = `data/data.json?t=${Date.now()}`;
+    const resp = await fetch(url, { cache: 'no-store' });
     RAW = await resp.json();
     MAX_DATE = RAW.date_range.to || null;
     renderOverall();
